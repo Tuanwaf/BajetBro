@@ -1,10 +1,30 @@
-function round2(n) {
+export function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-export function computeAdhocPlanned(month, template) {
-  const coreSum = template.categories.reduce((s, c) => s + c.planned, 0);
-  return round2(Math.max(0, month.income - coreSum) + (month.bonus || 0));
+// Locking a category freezes its actual spend and sends whatever's left of
+// its original planned amount (planned - actual, captured once at lock time
+// as `lockedLeftover`) over to Ad-hoc. The category's own `planned` label is
+// left untouched -- it's just historical context once locked -- so this
+// adjustment is added on top rather than changing the base subtraction,
+// which keeps the total always netting back to income + bonus regardless of
+// how many categories are locked.
+export function computeLockedAdjustment(month) {
+  return round2((month.categories || []).filter((c) => c.locked).reduce((s, c) => s + (c.lockedLeftover || 0), 0));
+}
+
+export function computeAdhocPlanned(month) {
+  const coreSum = (month.categories || []).reduce((s, c) => s + c.planned, 0);
+  return round2(Math.max(0, month.income - coreSum) + (month.bonus || 0) + computeLockedAdjustment(month));
+}
+
+// Total "Commitments" figure shown on Home: unlocked categories still count
+// their planned amount, but locked ones count their frozen actual instead
+// (their remaining budget already moved to Ad-hoc), plus Ad-hoc itself.
+export function computePlannedTotal(month) {
+  const categories = month.categories || [];
+  const coreTotal = categories.reduce((s, c) => s + (c.locked ? c.actual : c.planned), 0);
+  return round2(coreTotal + computeAdhocPlanned(month));
 }
 
 export function computeAdhocActual(month) {

@@ -160,16 +160,17 @@ h2.title {
   z-index: 1;
 }
 .balance-amt .cur { font-size: 19px; color: var(--lo); font-weight: 500; margin-right: 2px; }
-.balance-row { display: flex; gap: 10px; position: relative; z-index: 1; }
+.balance-row { display: flex; gap: 8px; position: relative; z-index: 1; }
 .stat {
   flex: 1;
+  min-width: 0;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--stroke);
   border-radius: 14px;
-  padding: 10px 12px;
+  padding: 10px 8px 10px 12px;
 }
-.stat .k { font-size: 11px; color: var(--lo); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
-.stat .v { font-family: var(--mono); font-size: 16px; font-weight: 600; margin-top: 3px; }
+.stat .k { font-size: 10.5px; color: var(--lo); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.stat .v { font-family: var(--mono); font-size: 14.5px; font-weight: 600; margin-top: 4px; overflow-wrap: anywhere; }
 .stat .v.up { color: var(--good); }
 .stat .v.down { color: var(--red); }
 

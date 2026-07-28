@@ -8,7 +8,7 @@
 
   let tmpl = $derived($template);
   let month = $derived($currentMonth);
-  let adhocPlanned = $derived(month && tmpl ? computeAdhocPlanned(month, tmpl) : 0);
+  let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
   let importing = $state(false);
   let pendingImportFile = $state(null);
 
@@ -21,8 +21,18 @@
   async function updateCategoryPlanned(index, e) {
     const value = parseFloat(e.target.value) || tmpl.categories[index].planned;
     e.target.value = value.toFixed(2);
-    const updated = tmpl.categories.map((c, i) => (i === index ? { ...c, planned: value } : c));
-    await db.template.put({ ...tmpl, categories: updated });
+    const key = tmpl.categories[index].key;
+
+    const updatedTemplate = tmpl.categories.map((c, i) => (i === index ? { ...c, planned: value } : c));
+    await db.template.put({ ...tmpl, categories: updatedTemplate });
+
+    // The current (open) month is still "in progress" -- its categories
+    // should track live template edits too. Only closed/historical months
+    // stay frozen.
+    if (month) {
+      const updatedMonth = month.categories.map((c) => (c.key === key ? { ...c, planned: value } : c));
+      await db.months.update(month.key, { categories: updatedMonth });
+    }
   }
 
   function handlePickFile(e) {

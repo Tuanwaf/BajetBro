@@ -34,7 +34,10 @@
       key: m.key,
       name: m.label,
       income: m.income + (m.bonus || 0),
+      startingBalance: m.startingBalance,
       spend: m.recordedTotal,
+      categories: m.categories,
+      extras: m.extras,
       current: false,
     }));
     if (month) {
@@ -42,11 +45,20 @@
         key: month.key,
         name: month.label,
         income: month.income + (month.bonus || 0),
+        startingBalance: month.startingBalance,
         spend: computeSpentTotal(month),
+        categories: month.categories,
+        extras: month.extras,
         current: true,
       });
     }
-    return rows;
+    return rows.map((r) => ({
+      ...r,
+      // Falls back to Income for the first tracked month, which predates
+      // rolling-balance tracking and has no Starting figure of its own.
+      primaryLabel: r.startingBalance != null ? 'Starting' : 'Income',
+      primaryValue: r.startingBalance != null ? r.startingBalance : r.income,
+    }));
   });
 
   let expandedKey = $state(null);
@@ -75,14 +87,14 @@
   </div>
 </div>
 
-<div class="section-hd"><h3>Monthly log</h3><span>Income vs spent</span></div>
+<div class="section-hd"><h3>Monthly log</h3><span>Starting vs spent</span></div>
 <div class="card">
   {#each allMonths as m (m.key)}
-    {@const delta = m.income - m.spend}
+    {@const delta = m.primaryValue - m.spend}
     <div class="month-row" class:open={expandedKey === m.key} onclick={() => toggle(m.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && toggle(m.key)}>
       <div>
         <div class="name">{m.name}{m.current ? ' · current' : ''}</div>
-        <div class="sub2">Income RM {fmt(m.income)} · Spent RM {fmt(m.spend)}</div>
+        <div class="sub2">{m.primaryLabel} RM {fmt(m.primaryValue)} · Spent RM {fmt(m.spend)}</div>
       </div>
       <div class="right" style="display:flex; align-items:center; gap:8px;">
         <span class="pill" class:good={delta >= 0} class:bad={delta < 0}>{delta >= 0 ? '+' : '-'}RM {fmt(Math.abs(delta))}</span>
@@ -90,11 +102,56 @@
       </div>
     </div>
     <div class="month-detail" class:open={expandedKey === m.key}>
-      <div class="sub2" style="font-family:var(--body); color:var(--lo); font-size:12.5px; line-height:1.5;">
-        {m.current ? 'Still open — tap category rows on Home for the live breakdown.' : 'Past months keep their own frozen category snapshot, just with different actuals.'}
+      <div class="detail-figures">
+        <span>Income <b class="num">RM {fmt(m.income)}</b></span>
+        {#if m.startingBalance != null}
+          <span>Starting <b class="num">RM {fmt(m.startingBalance)}</b></span>
+        {/if}
       </div>
+      {#each m.categories as cat (cat.key)}
+        <div class="detail-row">
+          <span class="dot" style="background:{cat.color}"></span>
+          <span class="name">{cat.name}{#if cat.note}<em class="note"> ({cat.note})</em>{/if}</span>
+          <span class="num">RM {fmt(cat.actual)}</span>
+        </div>
+      {/each}
+      {#each m.extras ?? [] as extra}
+        <div class="detail-row">
+          <span class="dot" style="background:{ADHOC_COLOR}"></span>
+          <span class="name">{extra.name}</span>
+          <span class="num">RM {fmt(extra.actual)}</span>
+        </div>
+      {/each}
     </div>
   {:else}
     <p class="hint" style="margin:4px 0;">No months tracked yet.</p>
   {/each}
 </div>
+
+<style>
+  .detail-figures {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--lo);
+    padding: 6px 4px 10px;
+    border-bottom: 1px solid var(--stroke);
+    margin-bottom: 4px;
+  }
+  .detail-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    font-size: 13px;
+    color: var(--hi);
+  }
+  .detail-row .name {
+    flex: 1;
+  }
+  .detail-row .note {
+    color: var(--dim);
+    font-size: 11px;
+    font-style: italic;
+  }
+</style>

@@ -15,18 +15,24 @@
   let openPots = $derived(computeOpenPots(pots));
 
   let selectedCatKey = $state(null); // category key, 'adhoc', or 'hutang'
-  let selectedAdhocLabel = $state(null);
+  let selectedAdhocLabel = $state(null); // preset label, or 'custom'
+  let customAdhocLabel = $state('');
   let selectedHutangType = $state(null);
   let selectedHutangMonth = $state(null);
-  let kpValue = $state('0');
+  let kpCents = $state(0); // amount held as integer cents, keyed in right-to-left like a banking app
   let noteValue = $state('');
+
+  const MAX_CENTS = 99999999; // RM 999,999.99
+
+  let kpDisplay = $derived((kpCents / 100).toFixed(2));
 
   function reset() {
     selectedCatKey = null;
     selectedAdhocLabel = null;
+    customAdhocLabel = '';
     selectedHutangType = null;
     selectedHutangMonth = null;
-    kpValue = '0';
+    kpCents = 0;
     noteValue = '';
   }
 
@@ -36,32 +42,34 @@
 
   function pressKey(k) {
     if (k === '⌫') {
-      kpValue = kpValue.length > 1 ? kpValue.slice(0, -1) : '0';
-    } else if (k === '.' && kpValue.includes('.')) {
-      // no-op
+      kpCents = Math.floor(kpCents / 10);
+    } else if (k === '00') {
+      kpCents = Math.min(MAX_CENTS, kpCents * 100);
     } else {
-      kpValue = kpValue === '0' && k !== '.' ? k : kpValue + k;
+      kpCents = Math.min(MAX_CENTS, kpCents * 10 + Number(k));
     }
   }
 
   function selectCat(key) {
     selectedCatKey = key;
     selectedAdhocLabel = null;
+    customAdhocLabel = '';
     selectedHutangType = null;
     selectedHutangMonth = null;
   }
 
   async function save() {
-    const amt = parseFloat(kpValue || '0');
+    const amt = kpCents / 100;
     if (!selectedCatKey || !amt) {
       showToast('Pick a category and amount first');
       return;
     }
 
     if (selectedCatKey === 'adhoc') {
-      const extras = [...(month.extras || []), { name: selectedAdhocLabel || 'Misc', actual: amt }];
+      const label = selectedAdhocLabel === 'custom' ? customAdhocLabel.trim() || 'Misc' : selectedAdhocLabel || 'Misc';
+      const extras = [...(month.extras || []), { name: label, actual: amt }];
       await db.months.update(month.key, { extras });
-      showToast(`Saved RM ${fmt(amt)} · Ad-hoc / ${selectedAdhocLabel || 'Misc'}`);
+      showToast(`Saved RM ${fmt(amt)} · Ad-hoc / ${label}`);
       onClose();
       currentView.set('home');
     } else if (selectedCatKey === 'hutang') {
@@ -111,7 +119,7 @@
     <span style="width:38px;"></span>
   </div>
   <div class="sheet-body">
-    <div class="amt-display"><span class="cur">RM</span><span class="val">{kpValue}</span></div>
+    <div class="amt-display"><span class="cur">RM</span><span class="val">{kpDisplay}</span></div>
 
     <div class="field-lbl">Category</div>
     <div class="chip-grid">
@@ -141,7 +149,16 @@
             onclick={() => (selectedAdhocLabel = label)}
           >{label}</button>
         {/each}
+        <button
+          class="chip ghost"
+          class:selected={selectedAdhocLabel === 'custom'}
+          style={selectedAdhocLabel === 'custom' ? `color:${ADHOC_COLOR}` : ''}
+          onclick={() => (selectedAdhocLabel = 'custom')}
+        >+ Custom</button>
       </div>
+      {#if selectedAdhocLabel === 'custom'}
+        <input class="note-input" placeholder="Type your own label…" bind:value={customAdhocLabel} />
+      {/if}
     {/if}
 
     {#if selectedCatKey === 'hutang'}
@@ -179,7 +196,7 @@
 
     <div class="field-lbl">Amount</div>
     <div class="keypad">
-      {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'] as k}
+      {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'] as k}
         <button class="key" class:op={k === '⌫'} onclick={() => pressKey(k)}>{k}</button>
       {/each}
     </div>

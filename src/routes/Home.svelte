@@ -7,10 +7,13 @@
     computeRemaining,
     computeRollsToNext,
     computeTabungHajiTotal,
+    computePlannedTotal,
+    round2,
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { ADHOC_COLOR, MONTH_NAMES } from '../lib/constants.js';
   import { currentView } from '../lib/viewStore.js';
+  import db from '../lib/db.js';
 
   let { onEndMonth } = $props();
 
@@ -21,12 +24,12 @@
   let divs = $derived($dividends ?? []);
 
   let year = $derived(month ? month.key.split('-')[0] : '');
-  let adhocPlanned = $derived(month && tmpl ? computeAdhocPlanned(month, tmpl) : 0);
+  let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
   let adhocActual = $derived(month ? computeAdhocActual(month) : 0);
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
   let remaining = $derived(month ? computeRemaining(month) : 0);
   let rollsToNext = $derived(month ? computeRollsToNext(month) : null);
-  let plannedTotal = $derived(tmpl ? tmpl.categories.reduce((s, c) => s + c.planned, 0) + adhocPlanned : 0);
+  let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
   let tabungHajiTotal = $derived(th ? computeTabungHajiTotal(th, pots, divs) : 0);
 
   let nextMonthAbbrev = $derived(month ? MONTH_NAMES[month.order % 12].slice(0, 3) : '');
@@ -38,6 +41,18 @@
     const pct = cat.planned > 0 ? Math.min(100, Math.round((cat.actual / cat.planned) * 100)) : cat.actual > 0 ? 100 : 0;
     const over = cat.actual > cat.planned;
     return { pct, over };
+  }
+
+  async function toggleLock(catKey) {
+    const categories = month.categories.map((c) => {
+      if (c.key !== catKey) return c;
+      if (c.locked) {
+        return { ...c, locked: false };
+      }
+      const leftover = round2(c.planned - c.actual);
+      return { ...c, locked: true, lockedLeftover: leftover };
+    });
+    await db.months.update(month.key, { categories });
   }
 </script>
 
@@ -90,7 +105,8 @@
   <div class="card">
     {#each month.categories as cat (cat.key)}
       {@const info = rowInfo(cat)}
-      <div class="cat-row">
+      {@const leftover = cat.locked ? cat.lockedLeftover : null}
+      <div class="cat-row" class:locked-row={cat.locked}>
         <span class="dot" style="background:{cat.color}"></span>
         <div class="cat-body">
           <div class="cat-name-row">
@@ -98,7 +114,11 @@
             <span class="cat-amt"><b class="num">RM {fmt(cat.actual)}</b> / {fmt(cat.planned)}</span>
           </div>
           <div class="track"><div class="fill" style="width:{info.pct}%; background:{info.over ? 'var(--red)' : cat.color}"></div></div>
-          {#if cat.key === 'saving'}
+          {#if cat.locked}
+            <span class="cat-note" style="color:var(--gold);">
+              Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Ad-hoc` : `RM ${fmt(Math.abs(leftover))} pulled from Ad-hoc`}
+            </span>
+          {:else if cat.key === 'saving'}
             <span class="cat-note link" role="button" tabindex="0" onclick={() => currentView.set('hutang')} onkeydown={(e) => e.key === 'Enter' && currentView.set('hutang')}>Feeds your Hutang pot &rarr;</span>
           {:else}
             <span class="cat-note" class:over={info.over} class:under={!info.over}>
@@ -106,6 +126,13 @@
             </span>
           {/if}
         </div>
+        <button class="lock-btn" aria-label={cat.locked ? 'Unlock category' : 'Lock category'} onclick={() => toggleLock(cat.key)}>
+          {#if cat.locked}
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--gold)" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round"/></svg>
+          {:else}
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--dim)" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 7.5-2" stroke="var(--dim)" stroke-width="1.6" stroke-linecap="round"/></svg>
+          {/if}
+        </button>
       </div>
     {/each}
 
@@ -138,3 +165,17 @@
 {:else}
   <p class="sub">Loading...</p>
 {/if}
+
+<style>
+  .lock-btn {
+    background: none;
+    border: none;
+    padding: 4px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+  .locked-row {
+    opacity: 0.85;
+  }
+</style>
