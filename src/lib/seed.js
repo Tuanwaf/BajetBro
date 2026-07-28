@@ -3,12 +3,12 @@
 // Settings -> Import JSON from a personal backup file (never committed).
 
 const CATEGORY_META = [
-  { name: 'Sewa rumah', color: '#4F86F7' },
-  { name: 'Bill Phone', color: '#F2994A' },
-  { name: 'Minyak motor', color: '#EB5757' },
-  { name: 'Makan', color: '#2D9CDB' },
-  { name: 'Saving', color: '#9B51E0' },
-  { name: 'Spotify', color: '#1DB954' },
+  { key: 'rent', name: 'Sewa rumah', color: '#6e8bff' },
+  { key: 'phone', name: 'Bill Phone', color: '#38c6d9' },
+  { key: 'petrol', name: 'Minyak motor', color: '#f2994a' },
+  { key: 'food', name: 'Makan', color: '#c084f5' },
+  { key: 'spotify', name: 'Spotify', color: '#3ddc97' },
+  { key: 'saving', name: 'Saving', color: '#e7b34e' },
 ];
 
 export async function seedIfNeeded(db) {

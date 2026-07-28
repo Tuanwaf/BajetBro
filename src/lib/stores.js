@@ -20,7 +20,7 @@ export const currentMonth = fromLiveQuery(
 );
 
 export const closedMonths = fromLiveQuery(
-  () => db.months.where('closed').equals(1).sortBy('order').then((arr) => arr.reverse()),
+  () => db.months.where('closed').equals(1).sortBy('order'),
   []
 );
 

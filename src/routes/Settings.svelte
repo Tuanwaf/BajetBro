@@ -1,20 +1,26 @@
 <script>
-  import { template } from '../lib/stores.js';
+  import { template, currentMonth } from '../lib/stores.js';
+  import { computeAdhocPlanned } from '../lib/calc.js';
+  import { fmt } from '../lib/format.js';
+  import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
 
   let tmpl = $derived($template);
+  let month = $derived($currentMonth);
+  let adhocPlanned = $derived(month && tmpl ? computeAdhocPlanned(month, tmpl) : 0);
   let importing = $state(false);
-  let persisted = $state(null);
 
-  if (navigator.storage?.persisted) {
-    navigator.storage.persisted().then((v) => (persisted = v));
+  async function updateIncome(e) {
+    const value = parseFloat(e.target.value) || month.income;
+    e.target.value = value.toFixed(2);
+    await db.months.update(month.key, { income: value });
   }
 
-  async function updateCategory(index, field, value) {
-    const updated = tmpl.categories.map((c, i) =>
-      i === index ? { ...c, [field]: field === 'planned' ? Number(value) : value } : c
-    );
+  async function updateCategoryPlanned(index, e) {
+    const value = parseFloat(e.target.value) || tmpl.categories[index].planned;
+    e.target.value = value.toFixed(2);
+    const updated = tmpl.categories.map((c, i) => (i === index ? { ...c, planned: value } : c));
     await db.template.put({ ...tmpl, categories: updated });
   }
 
@@ -28,112 +34,67 @@
     importing = true;
     try {
       await importBackup(file);
-      alert('Import complete.');
+      showToast('Backup restored');
     } catch (err) {
-      alert('Import failed: ' + err.message);
+      showToast('That file could not be read — is it a BajetBro export?');
     } finally {
       importing = false;
       e.target.value = '';
     }
   }
+
+  async function handleExport() {
+    await exportBackup();
+    showToast('Exported — save this file somewhere safe');
+  }
 </script>
 
-<h1>Settings</h1>
+<h2 class="title">Commitments setup</h2>
+<p class="sub">Fixed categories reappear every month automatically. Ad-hoc gets one pooled budget.</p>
 
-{#if tmpl}
-  <section class="template-editor">
-    <h2>Fixed Categories</h2>
-    {#each tmpl.categories as cat, i (cat.name)}
-      <div class="template-row">
-        <span class="dot" style="background:{cat.color}"></span>
-        <input
-          class="name-input"
-          value={cat.name}
-          onchange={(e) => updateCategory(i, 'name', e.target.value)}
-        />
-        <input
-          class="planned-input"
-          type="number"
-          step="0.01"
-          value={cat.planned}
-          onchange={(e) => updateCategory(i, 'planned', e.target.value)}
-        />
-      </div>
-    {/each}
-    <p class="hint">Changes here only affect future months — past months keep their own snapshot.</p>
-  </section>
+{#if month}
+  <div class="section-hd" style="margin-top:6px;"><h3>Net income baseline</h3></div>
+  <div class="card" style="display:flex; align-items:center; justify-content:space-between;">
+    <span style="font-size:13.5px; color:var(--lo);">Monthly net income</span>
+    <input class="set-amt" style="width:100px;" value={month.income.toFixed(2)} onchange={updateIncome} />
+  </div>
 {/if}
 
-<section class="backup">
-  <h2>Backup</h2>
-  <button class="export-btn" onclick={exportBackup}>Export JSON</button>
-  <label class="import-btn">
-    Import JSON
-    <input
-      type="file"
-      accept="application/json"
-      onchange={handleImport}
-      disabled={importing}
-      style="display:none"
-    />
-  </label>
-  {#if persisted !== null}
-    <p class="hint">Persistent storage: {persisted ? 'granted' : 'not granted'}</p>
-  {/if}
-</section>
+{#if tmpl}
+  <div class="section-hd"><h3>Fixed categories</h3><span>{tmpl.categories.length} active</span></div>
+  <div class="card">
+    {#each tmpl.categories as cat, i (cat.key)}
+      <div class="set-row">
+        <span class="dot" style="background:{cat.color}"></span>
+        <span class="lbl2">{cat.name}</span>
+        <input class="set-amt" value={cat.planned.toFixed(2)} onchange={(e) => updateCategoryPlanned(i, e)} />
+      </div>
+    {/each}
+  </div>
+  <p class="hint" style="margin-left:4px;">Saving feeds your Hutang pot — change it here and it applies from next month.</p>
+  <button class="add-cat-btn">+ Add fixed category</button>
 
-<style>
-  h1 {
-    color: #e6e6ea;
-  }
-  h2 {
-    color: #e6e6ea;
-    font-size: 1rem;
-  }
-  .template-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0;
-  }
-  .dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .name-input {
-    flex: 1;
-    background: #1a1a22;
-    border: 1px solid #26262f;
-    border-radius: 6px;
-    color: #e6e6ea;
-    padding: 0.3rem 0.5rem;
-  }
-  .planned-input {
-    width: 90px;
-    background: #1a1a22;
-    border: 1px solid #26262f;
-    border-radius: 6px;
-    color: #e6e6ea;
-    padding: 0.3rem 0.5rem;
-  }
-  .hint {
-    color: #8a8a99;
-    font-size: 0.8rem;
-  }
-  .backup {
-    margin-top: 2rem;
-  }
-  .export-btn,
-  .import-btn {
-    display: inline-block;
-    padding: 0.6rem 1rem;
-    border-radius: 8px;
-    background: #1a1a22;
-    border: 1px solid #26262f;
-    color: #e6e6ea;
-    margin-right: 0.5rem;
-    cursor: pointer;
-  }
-</style>
+  <div class="section-hd"><h3>Ad-hoc</h3><span>auto-computed</span></div>
+  <div class="card">
+    <div class="set-row" style="border:none;">
+      <span class="dot" style="background:var(--c-adhoc)"></span>
+      <span class="lbl2">This month's Ad-hoc allocation</span>
+      <span class="num" style="font-weight:700; font-size:14px;">{fmt(adhocPlanned)}</span>
+    </div>
+    <p class="hint" style="margin-top:4px;">= Income − fixed commitments, plus any bonus. No need to set this — it's recalculated every month.</p>
+  </div>
+{/if}
+
+<div class="section-hd"><h3>Backup &amp; transfer</h3><span>move to another device</span></div>
+<div class="card" style="display:flex; flex-direction:column; gap:10px;">
+  <button class="io-btn" onclick={handleExport}>
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 15V3M7 8l5-5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Export backup (.json)
+  </button>
+  <label class="io-btn" style="cursor:pointer;">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12M7 10l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Import backup
+    <input type="file" accept="application/json" onchange={handleImport} disabled={importing} style="display:none" />
+  </label>
+  <p class="hint">Everything — commitments, this cycle, Hutang pots, dividends — bundles into one file. Import it on your next device to pick up exactly where you left off.</p>
+</div>

@@ -1,33 +1,38 @@
 <script>
   import { currentView } from './lib/viewStore.js';
-  import Nav from './lib/components/Nav.svelte';
+  import TabBar from './lib/components/TabBar.svelte';
+  import Toast from './lib/components/Toast.svelte';
   import Home from './routes/Home.svelte';
   import Hutang from './routes/Hutang.svelte';
   import History from './routes/History.svelte';
   import Settings from './routes/Settings.svelte';
-  import EndMonth from './routes/EndMonth.svelte';
+  import AddExpenseSheet from './routes/AddExpenseSheet.svelte';
+  import EndMonthSheet from './routes/EndMonthSheet.svelte';
+
+  let addSheetOpen = $state(false);
+  let endMonthSheetOpen = $state(false);
 </script>
 
-<main>
-  {#if $currentView === 'home'}
-    <Home />
-  {:else if $currentView === 'hutang'}
-    <Hutang />
-  {:else if $currentView === 'history'}
-    <History />
-  {:else if $currentView === 'settings'}
-    <Settings />
-  {:else if $currentView === 'endMonth'}
-    <EndMonth />
-  {/if}
-</main>
+<div class="app-shell">
+  <div class="view">
+    <section class="page" class:active={$currentView === 'home'}>
+      <Home onEndMonth={() => (endMonthSheetOpen = true)} />
+    </section>
+    <section class="page" class:active={$currentView === 'hutang'}>
+      <Hutang />
+    </section>
+    <section class="page" class:active={$currentView === 'history'}>
+      <History />
+    </section>
+    <section class="page" class:active={$currentView === 'settings'}>
+      <Settings />
+    </section>
+  </div>
 
-<Nav />
+  <TabBar onAddClick={() => (addSheetOpen = true)} />
 
-<style>
-  main {
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 1.25rem 1.25rem 4.5rem;
-  }
-</style>
+  <AddExpenseSheet open={addSheetOpen} onClose={() => (addSheetOpen = false)} />
+  <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
+
+  <Toast />
+</div>
