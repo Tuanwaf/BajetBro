@@ -33,8 +33,9 @@
     const rows = closed.map((m) => ({
       key: m.key,
       name: m.label,
-      income: m.income + (m.bonus || 0),
+      salary: m.income,
       bonus: m.bonus || 0,
+      additionalIncome: m.additionalIncome || 0,
       startingBalance: m.startingBalance,
       spend: m.recordedTotal,
       categories: m.categories,
@@ -45,8 +46,9 @@
       rows.push({
         key: month.key,
         name: month.label,
-        income: month.income + (month.bonus || 0),
+        salary: month.income,
         bonus: month.bonus || 0,
+        additionalIncome: month.additionalIncome || 0,
         startingBalance: month.startingBalance,
         spend: computeSpentTotal(month),
         categories: month.categories,
@@ -55,15 +57,17 @@
       });
     }
     return rows.map((r) => {
-      // Falls back to Income for the first tracked month, which predates
-      // rolling-balance tracking and has no Total balance figure of its own.
-      // Total balance already has that month's income folded in, so unlike
-      // the Income fallback, it only needs bonus added (not income again).
+      // Falls back to Salary for the first tracked month, which predates
+      // rolling-balance tracking and has no Income figure of its own.
+      // Income already has that month's salary folded in, so unlike the
+      // Salary fallback, it only needs bonus/additional income added.
       const hasBalance = r.startingBalance != null;
-      const primaryValue = hasBalance ? r.startingBalance + r.bonus : r.income;
+      const primaryValue = hasBalance
+        ? r.startingBalance + r.bonus + r.additionalIncome
+        : r.salary + r.bonus + r.additionalIncome;
       return {
         ...r,
-        primaryLabel: hasBalance ? 'Total balance' : 'Income',
+        primaryLabel: hasBalance ? 'Income' : 'Salary',
         primaryValue,
         delta: primaryValue - r.spend,
       };
@@ -96,7 +100,7 @@
   </div>
 </div>
 
-<div class="section-hd"><h3>Monthly log</h3><span>Total balance vs spent</span></div>
+<div class="section-hd"><h3>Monthly log</h3><span>Income vs spent</span></div>
 <div class="card">
   {#each allMonths as m (m.key)}
     <div class="month-row" class:open={expandedKey === m.key} onclick={() => toggle(m.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && toggle(m.key)}>
@@ -112,9 +116,9 @@
     </div>
     <div class="month-detail" class:open={expandedKey === m.key}>
       <div class="detail-figures">
-        <span>Income <b class="num">RM {fmt(m.income)}</b></span>
+        <span>Salary <b class="num">RM {fmt(m.salary)}</b>{#if m.bonus > 0}<b class="num" style="color:var(--good);"> +{fmt(m.bonus)}</b>{/if}</span>
         {#if m.startingBalance != null}
-          <span>Total balance <b class="num">RM {fmt(m.primaryValue)}</b></span>
+          <span>Income <b class="num">RM {fmt(m.primaryValue)}</b>{#if m.additionalIncome > 0}<b class="num" style="color:var(--good);"> +{fmt(m.additionalIncome)}</b>{/if}</span>
         {/if}
       </div>
       {#each m.categories as cat (cat.key)}

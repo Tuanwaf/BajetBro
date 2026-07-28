@@ -71,11 +71,14 @@
     <div class="balance-amt"><span class="cur">RM</span>{fmt(totalRemaining)}</div>
     <div class="balance-row">
       <div class="stat">
-        <div class="k">Total balance</div>
-        <div class="v num">{totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}</div>
+        <div class="k">Income</div>
+        <div class="v num">
+          {totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}
+          {#if month.additionalIncome > 0}<span style="color:var(--good); font-size:10.5px;"> +{fmt(month.additionalIncome)}</span>{/if}
+        </div>
       </div>
       <div class="stat">
-        <div class="k">Net income</div>
+        <div class="k">Salary</div>
         <div class="v num">
           RM {fmt(month.income)}
           {#if month.bonus > 0}<span style="color:var(--good); font-size:10.5px;"> +{fmt(month.bonus)}</span>{/if}
@@ -83,7 +86,7 @@
       </div>
       <div class="stat">
         <div class="k">Spent</div>
-        <div class="v num">RM {fmt(spentTotal)}</div>
+        <div class="v num" style="color:var(--red);">RM {fmt(spentTotal)}</div>
       </div>
     </div>
   </div>

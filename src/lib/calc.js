@@ -15,7 +15,12 @@ export function computeLockedAdjustment(month) {
 
 export function computeAdhocPlanned(month) {
   const coreSum = (month.categories || []).reduce((s, c) => s + c.planned, 0);
-  return round2(Math.max(0, month.income - coreSum) + (month.bonus || 0) + computeLockedAdjustment(month));
+  return round2(
+    Math.max(0, month.income - coreSum) +
+      (month.bonus || 0) +
+      (month.additionalIncome || 0) +
+      computeLockedAdjustment(month)
+  );
 }
 
 // Total "Commitments" figure shown on Home: unlocked categories still count
@@ -42,25 +47,25 @@ export function computeSpentTotal(month) {
 }
 
 // Bootstrap-only fallback: this month's own income-minus-spend, for the rare
-// case a month has no Starting balance yet (nothing to roll forward from).
+// case a month has no Total balance yet (nothing to roll forward from).
 export function computeRemaining(month) {
-  const income = (month.income || 0) + (month.bonus || 0);
+  const income = (month.income || 0) + (month.bonus || 0) + (month.additionalIncome || 0);
   return round2(income - computeSpentTotal(month));
 }
 
-// The comprehensive "Total balance" figure: the rolled-forward balance plus
-// any bonus/additional income logged this cycle. `month.startingBalance`
-// already has this month's own base income folded into it (it's a running
-// cumulative total, not "leftover before income arrived") -- bonus is the
-// only piece not yet reflected in it, since it can be added anytime mid-cycle
-// via Settings, after Starting was already set.
+// The comprehensive "Income" figure shown on Home: the rolled-forward
+// balance plus any bonus (added at cycle start) and additional income
+// (added anytime mid-cycle via Settings). `month.startingBalance` already
+// has this month's own base Salary folded into it (it's a running
+// cumulative total, not "leftover before salary arrived") -- bonus and
+// additional income are the only pieces not yet reflected in it.
 export function computeTotalBalance(month) {
   if (month.startingBalance == null) return null;
-  return round2(month.startingBalance + (month.bonus || 0));
+  return round2(month.startingBalance + (month.bonus || 0) + (month.additionalIncome || 0));
 }
 
 // True cash-on-hand and the figure that rolls forward into next month's
-// Total balance.
+// Income balance.
 export function computeTotalRemaining(month) {
   const totalBalance = computeTotalBalance(month);
   if (totalBalance != null) {

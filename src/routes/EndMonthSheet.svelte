@@ -47,7 +47,7 @@
     // Starting balance is that plus its (this closing month's) income baseline.
     const newStartingBalance = round2(leftover + month.income);
 
-    await db.transaction('rw', db.months, db.hutangPots, async () => {
+    await db.transaction('rw', db.months, async () => {
       await db.months.update(month.key, { closed: 1, recordedTotal: spentTotal });
 
       await db.months.put({
@@ -57,14 +57,17 @@
         closed: 0,
         income: month.income,
         bonus: bonusAmt,
+        additionalIncome: 0,
         startingBalance: newStartingBalance,
         categories: tmpl.categories.map((c) => ({ ...c, actual: 0 })),
         extras: [],
         recordedTotal: 0,
       });
 
-      const savingPlanned = tmpl.categories.find((c) => c.key === 'saving')?.planned || 0;
-      await db.hutangPots.put({ month: newKey, initial: savingPlanned, used: 0, send: 0 });
+      // No Hutang pot is created here anymore -- a pot only opens once money
+      // is actually logged against the Saving category (see AddExpenseSheet),
+      // so its initial amount reflects what was really set aside, not an
+      // assumed fixed figure.
     });
 
     onClose();
@@ -89,8 +92,8 @@
         <p class="sub" style="margin-top:4px;">Here's how it wrapped up before it moves to History.</p>
         <div class="card" style="margin-bottom:14px;">
           <div class="balance-row">
-            <div class="stat"><div class="k">Total balance</div><div class="v num">{totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}</div></div>
-            <div class="stat"><div class="k">Spent</div><div class="v num">RM {fmt(spentTotal)}</div></div>
+            <div class="stat"><div class="k">Income</div><div class="v num">{totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}</div></div>
+            <div class="stat"><div class="k">Spent</div><div class="v num" style="color:var(--red);">RM {fmt(spentTotal)}</div></div>
             <div class="stat"><div class="k">Left over</div><div class="v num" class:up={leftover >= 0} class:down={leftover < 0}>{leftover >= 0 ? 'RM ' : '-RM '}{fmt(Math.abs(leftover))}</div></div>
           </div>
         </div>
@@ -104,7 +107,7 @@
       {:else}
         <p class="sub" style="margin-top:4px;">Starting <span>{MONTH_NAMES[month.order % 12]}</span> with your fixed income.</p>
         <div class="card" style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
-          <span style="font-size:13.5px; color:var(--lo);">Net income</span>
+          <span style="font-size:13.5px; color:var(--lo);">Salary</span>
           <span class="num" style="font-size:17px; font-weight:700;">RM {fmt(month.income)}</span>
         </div>
         <label class="bonus-toggle">

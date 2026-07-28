@@ -113,6 +113,21 @@
           : c
       );
       await db.months.update(month.key, { categories });
+
+      // Saving is what actually opens/grows this month's Hutang pot -- the
+      // pot's initial amount reflects what was really set aside (which can
+      // be less than, equal to, or more than the planned Saving amount, e.g.
+      // if extra rolled-over cash is also put toward it), not an assumed
+      // fixed figure created automatically at cycle start.
+      if (selectedCatKey === 'saving') {
+        const existingPot = pots.find((p) => p.month === month.key);
+        if (existingPot) {
+          await db.hutangPots.update(month.key, { initial: existingPot.initial + amt });
+        } else {
+          await db.hutangPots.put({ month: month.key, initial: amt, used: 0, send: 0 });
+        }
+      }
+
       const cat = tmpl.categories.find((c) => c.key === selectedCatKey);
       showToast(`Saved RM ${fmt(amt)} · ${cat?.name ?? ''}`);
       onClose();

@@ -15,6 +15,7 @@
 
 <div class="app-shell">
   <div class="view">
+    <div class="notch-spacer"></div>
     <section class="page" class:active={$currentView === 'home'}>
       <Home onEndMonth={() => (endMonthSheetOpen = true)} />
     </section>
@@ -35,6 +36,4 @@
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
 
   <Toast />
-
-  <div class="status-bar-overlay"></div>
 </div>
