@@ -126,7 +126,7 @@
       <span class="lbl2">This month's Ad-hoc allocation</span>
       <span class="num" style="font-weight:700; font-size:14px;">{fmt(adhocPlanned)}</span>
     </div>
-    <p class="hint" style="margin-top:4px;">= Salary − fixed commitments, plus any bonus or additional income. No need to set this — it's recalculated every month.</p>
+    <p class="hint" style="margin-top:4px;">= Income − fixed commitments (Income already includes rolled-forward balance, Salary, bonus, and additional income). No need to set this — it's recalculated every month.</p>
   </div>
 {/if}
 

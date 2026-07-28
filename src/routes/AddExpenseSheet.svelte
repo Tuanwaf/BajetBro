@@ -25,6 +25,8 @@
   const MAX_CENTS = 99999999; // RM 999,999.99
 
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
+  let pressedKey = $state(null);
+  let pressedTimer;
 
   function reset() {
     selectedCatKey = null;
@@ -48,6 +50,12 @@
     } else {
       kpCents = Math.min(MAX_CENTS, kpCents * 10 + Number(k));
     }
+
+    // A deterministic minimum-duration flash -- CSS :active alone can be too
+    // brief/inconsistent on a fast tap to actually feel like a keypress.
+    clearTimeout(pressedTimer);
+    pressedKey = k;
+    pressedTimer = setTimeout(() => (pressedKey = null), 110);
   }
 
   function selectCat(key) {
@@ -223,7 +231,7 @@
     <div class="field-lbl">Amount</div>
     <div class="keypad">
       {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'] as k}
-        <button class="key" class:op={k === '⌫'} onclick={() => pressKey(k)}>{k}</button>
+        <button class="key" class:op={k === '⌫'} class:pressed={pressedKey === k} onclick={() => pressKey(k)}>{k}</button>
       {/each}
     </div>
 
