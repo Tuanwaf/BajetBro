@@ -11,6 +11,13 @@
 
   let addSheetOpen = $state(false);
   let endMonthSheetOpen = $state(false);
+
+  // Every page shares one document scroll, so switching tabs would otherwise
+  // inherit the previous page's scroll offset. Reset to the top on change.
+  $effect(() => {
+    $currentView;
+    window.scrollTo(0, 0);
+  });
 </script>
 
 <div class="app-shell">
