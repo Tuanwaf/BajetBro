@@ -179,6 +179,15 @@
     align-self: flex-start;
     margin-top: 2px;
   }
+  .lock-btn svg {
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .lock-btn:active svg {
+    transform: scale(0.82);
+  }
+  .cat-row {
+    transition: opacity 0.3s ease;
+  }
   .locked-row {
     opacity: 0.85;
   }

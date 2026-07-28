@@ -87,37 +87,63 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 0 20px 100px;
+  /* Content extends up to y=0 so it scrolls *under* the status-bar overlay
+     below. The top padding keeps the first item clear of the notch at rest. */
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 100px;
   scrollbar-width: none;
 }
 .view::-webkit-scrollbar { display: none; }
 
-/* Frosted glass strip for the notch/status-bar area. Unlike a separately
-   fixed-position overlay (which showed a hard clip with no blur in
-   practice -- likely a compositing/stacking-context issue), this is a real
-   sticky element living inside .view itself: it scrolls to the top and
-   pins there, with page content passing underneath and showing through
-   blurred, which is the reliable way to get this effect on iOS Safari. */
-.notch-spacer {
-  position: sticky;
+/* Frosted status-bar overlay.
+   Third approach after two failed attempts on-device -- the previous ones
+   almost certainly died because `-webkit-overflow-scrolling: touch` (now
+   removed) forced the scroller onto a compositing layer that WebKit refuses
+   to run backdrop-filter against. This is a plain fixed sibling of .view with
+   its own layer (translateZ), so the blur samples the composited page behind.
+   Belt-and-suspenders: the background is ALSO a top-opaque -> transparent
+   gradient, so if backdrop-filter still won't render on this device, content
+   gracefully fades into the notch instead of hard-clipping -- no dead bar. */
+.status-bar-blur {
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 10;
-  height: env(safe-area-inset-top, 0px);
-  margin: 0 -20px;
-  background: rgba(13, 15, 20, 0.55);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  height: calc(env(safe-area-inset-top, 0px) + 10px);
+  z-index: 100;
   pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    var(--ink-2) 0%,
+    rgba(13, 15, 20, 0.72) 55%,
+    rgba(13, 15, 20, 0) 100%
+  );
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  transform: translateZ(0);
+  will-change: transform;
 }
 
-.page { display: none; padding-top: 20px; }
-.page.active { display: block; animation: fade 0.25s ease; }
-@keyframes fade {
-  from { opacity: 0; transform: translateY(6px); }
+.page { display: none; }
+.page.active { display: block; }
+
+/* Gentle staggered rise for the major blocks of whichever page is active --
+   re-triggers on each tab switch so content feels like it settles into place
+   rather than snapping in. `:not(.sheet)` is critical: bottom-sheet overlays
+   are rendered inside their page, and a rise animation with fill:both would
+   override their translateY(100%) hide transform and pin them open. */
+.page.active > *:not(.sheet) {
+  animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.page.active > *:not(.sheet):nth-child(1) { animation-delay: 0.02s; }
+.page.active > *:not(.sheet):nth-child(2) { animation-delay: 0.06s; }
+.page.active > *:not(.sheet):nth-child(3) { animation-delay: 0.10s; }
+.page.active > *:not(.sheet):nth-child(4) { animation-delay: 0.14s; }
+.page.active > *:not(.sheet):nth-child(5) { animation-delay: 0.18s; }
+.page.active > *:not(.sheet):nth-child(6) { animation-delay: 0.22s; }
+.page.active > *:not(.sheet):nth-child(n + 7) { animation-delay: 0.26s; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -329,9 +355,14 @@ h2.title {
   border: 1px solid var(--stroke-2);
   background: var(--panel);
   font-size: 13px; font-weight: 600; color: var(--hi);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 .chip .dot { width: 8px; height: 8px; }
-.chip.selected { border-color: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.chip.selected {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  background: color-mix(in srgb, currentColor 12%, var(--panel));
+}
 .chip.ghost { color: var(--lo); border-style: dashed; }
 
 .field-lbl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); margin: 18px 0 8px; }
@@ -350,15 +381,27 @@ h2.title {
   background: var(--panel); border: 1px solid var(--stroke);
   border-radius: 14px; padding: 14px 0; text-align: center;
   font-family: var(--mono); font-size: 19px; font-weight: 600; color: var(--hi);
-  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+  /* Smooth "spring back" on release: the fill/scale eases out over ~0.32s
+     with an overshoot-free curve, so lifting off feels soft rather than a
+     hard snap. The press itself is made near-instant by the shorter
+     transition on .pressed below (snappy down, smooth up). */
+  transition:
+    background-color 0.32s ease,
+    border-color 0.32s ease,
+    color 0.32s ease,
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .key.op { color: var(--lo); font-size: 15px; font-weight: 600; }
-.key:active, .key.pressed {
+.key.pressed {
   background: var(--gold);
   border-color: var(--gold);
   color: #241a05;
-  transform: scale(0.94);
-  transition: none;
+  transform: scale(0.9);
+  transition:
+    background-color 0.04s ease,
+    border-color 0.04s ease,
+    color 0.04s ease,
+    transform 0.04s ease;
 }
 
 .save-btn {

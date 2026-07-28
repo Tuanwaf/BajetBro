@@ -15,7 +15,6 @@
 
 <div class="app-shell">
   <div class="view">
-    <div class="notch-spacer"></div>
     <section class="page" class:active={$currentView === 'home'}>
       <Home onEndMonth={() => (endMonthSheetOpen = true)} />
     </section>
@@ -29,6 +28,8 @@
       <Settings />
     </section>
   </div>
+
+  <div class="status-bar-blur"></div>
 
   <TabBar onAddClick={() => (addSheetOpen = true)} />
 

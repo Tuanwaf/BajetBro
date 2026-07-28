@@ -51,11 +51,18 @@
       kpCents = Math.min(MAX_CENTS, kpCents * 10 + Number(k));
     }
 
-    // A deterministic minimum-duration flash -- CSS :active alone can be too
-    // brief/inconsistent on a fast tap to actually feel like a keypress.
+    // Hold the "pressed" fill briefly so the snappy fill is clearly
+    // registered, then drop the class and let CSS ease it back out smoothly
+    // (see .key transition). CSS :active alone is too brief/inconsistent on a
+    // fast tap to feel like a real keypress.
     clearTimeout(pressedTimer);
-    pressedKey = k;
-    pressedTimer = setTimeout(() => (pressedKey = null), 110);
+    pressedKey = null;
+    // Re-assign on the next frame so a rapid re-tap of the same key still
+    // re-triggers the fill instead of being swallowed by the unchanged value.
+    requestAnimationFrame(() => {
+      pressedKey = k;
+      pressedTimer = setTimeout(() => (pressedKey = null), 130);
+    });
   }
 
   function selectCat(key) {
