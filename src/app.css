@@ -56,19 +56,27 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-#app {
-  min-height: 100dvh;
-  min-height: 100vh;
+/* Lock the document itself so it can never scroll or rubber-band on iOS --
+   only .view (below) scrolls. Without this, fast/repeated scroll gestures
+   can rubber-band the whole page, which is what breaks the notch/status-bar
+   overlay and makes content appear to shift or get clipped underneath it. */
+html, body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--ink-2);
 }
 
-html, body {
-  background: var(--ink-2);
+#app {
+  height: 100%;
 }
 
 .app-shell {
   position: relative;
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   background: var(--ink-2);
   display: flex;
   flex-direction: column;
@@ -80,6 +88,8 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 20px 20px 100px;
   scrollbar-width: none;
 }

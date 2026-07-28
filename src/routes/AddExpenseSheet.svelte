@@ -65,9 +65,12 @@
       return;
     }
 
+    const note = noteValue.trim();
+    const now = new Date().toISOString();
+
     if (selectedCatKey === 'adhoc') {
       const label = selectedAdhocLabel === 'custom' ? customAdhocLabel.trim() || 'Misc' : selectedAdhocLabel || 'Misc';
-      const extras = [...(month.extras || []), { name: label, actual: amt }];
+      const extras = [...(month.extras || []), { name: label, actual: amt, date: now, note: note || undefined }];
       await db.months.update(month.key, { extras });
       showToast(`Saved RM ${fmt(amt)} · Ad-hoc / ${label}`);
       onClose();
@@ -100,7 +103,15 @@
       onClose();
       currentView.set('hutang');
     } else {
-      const categories = month.categories.map((c) => (c.key === selectedCatKey ? { ...c, actual: c.actual + amt } : c));
+      const categories = month.categories.map((c) =>
+        c.key === selectedCatKey
+          ? {
+              ...c,
+              actual: c.actual + amt,
+              transactions: [...(c.transactions || []), { amount: amt, date: now, note: note || undefined }],
+            }
+          : c
+      );
       await db.months.update(month.key, { categories });
       const cat = tmpl.categories.find((c) => c.key === selectedCatKey);
       showToast(`Saved RM ${fmt(amt)} · ${cat?.name ?? ''}`);

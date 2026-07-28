@@ -46,6 +46,14 @@ export function computeRemaining(month) {
   return round2(income - computeSpentTotal(month));
 }
 
+// True cash-on-hand: this month's own income-minus-spend, plus whatever
+// rolled forward from previous months. This is the figure that should drive
+// the Home dashboard's "Remaining this month" hero number -- using
+// computeRemaining() alone ignores the rollover and understates it.
+export function computeTotalRemaining(month) {
+  return round2((month.startingBalance || 0) + computeRemaining(month));
+}
+
 export function computeRollsToNext(month) {
   if (month.startingBalance == null) return null;
   return round2(month.startingBalance + computeRemaining(month));

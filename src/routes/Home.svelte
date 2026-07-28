@@ -4,16 +4,16 @@
     computeAdhocPlanned,
     computeAdhocActual,
     computeSpentTotal,
-    computeRemaining,
-    computeRollsToNext,
+    computeTotalRemaining,
     computeTabungHajiTotal,
     computePlannedTotal,
     round2,
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
-  import { ADHOC_COLOR, MONTH_NAMES } from '../lib/constants.js';
+  import { ADHOC_COLOR } from '../lib/constants.js';
   import { currentView } from '../lib/viewStore.js';
   import db from '../lib/db.js';
+  import CategoryDetailSheet from './CategoryDetailSheet.svelte';
 
   let { onEndMonth } = $props();
 
@@ -27,15 +27,14 @@
   let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
   let adhocActual = $derived(month ? computeAdhocActual(month) : 0);
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
-  let remaining = $derived(month ? computeRemaining(month) : 0);
-  let rollsToNext = $derived(month ? computeRollsToNext(month) : null);
+  let totalRemaining = $derived(month ? computeTotalRemaining(month) : 0);
   let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
   let tabungHajiTotal = $derived(th ? computeTabungHajiTotal(th, pots, divs) : 0);
 
-  let nextMonthAbbrev = $derived(month ? MONTH_NAMES[month.order % 12].slice(0, 3) : '');
-
   let adhocOpen = $state(false);
   let adhocInfo = $derived(rowInfo({ actual: adhocActual, planned: adhocPlanned }));
+  let detailCategoryKey = $state(null);
+  let detailCategory = $derived(detailCategoryKey ? month?.categories.find((c) => c.key === detailCategoryKey) : null);
 
   function rowInfo(cat) {
     const pct = cat.planned > 0 ? Math.min(100, Math.round((cat.actual / cat.planned) * 100)) : cat.actual > 0 ? 100 : 0;
@@ -63,12 +62,16 @@
   <div class="balance-card">
     <div class="balance-top">
       <div class="lbl">Remaining this month</div>
-      <span class="pill" class:good={remaining >= 0} class:bad={remaining < 0}>
-        {remaining >= 0 ? 'On track' : 'Over budget'}
+      <span class="pill" class:good={totalRemaining >= 0} class:bad={totalRemaining < 0}>
+        {totalRemaining >= 0 ? 'On track' : 'Over budget'}
       </span>
     </div>
-    <div class="balance-amt"><span class="cur">RM</span>{fmt(remaining)}</div>
+    <div class="balance-amt"><span class="cur">RM</span>{fmt(totalRemaining)}</div>
     <div class="balance-row">
+      <div class="stat">
+        <div class="k">Starting</div>
+        <div class="v num">{month.startingBalance != null ? 'RM ' + fmt(month.startingBalance) : '—'}</div>
+      </div>
       <div class="stat">
         <div class="k">Net income</div>
         <div class="v num">
@@ -79,12 +82,6 @@
       <div class="stat">
         <div class="k">Spent</div>
         <div class="v num">RM {fmt(spentTotal)}</div>
-      </div>
-      <div class="stat">
-        <div class="k">Rolls to {nextMonthAbbrev}</div>
-        <div class="v num" class:up={rollsToNext >= 0} class:down={rollsToNext < 0}>
-          {rollsToNext != null ? 'RM ' + fmt(rollsToNext) : '—'}
-        </div>
       </div>
     </div>
   </div>
@@ -106,7 +103,7 @@
     {#each month.categories as cat (cat.key)}
       {@const info = rowInfo(cat)}
       {@const leftover = cat.locked ? cat.lockedLeftover : null}
-      <div class="cat-row" class:locked-row={cat.locked}>
+      <div class="cat-row" class:locked-row={cat.locked} onclick={() => (detailCategoryKey = cat.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (detailCategoryKey = cat.key)}>
         <span class="dot" style="background:{cat.color}"></span>
         <div class="cat-body">
           <div class="cat-name-row">
@@ -119,14 +116,14 @@
               Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Ad-hoc` : `RM ${fmt(Math.abs(leftover))} pulled from Ad-hoc`}
             </span>
           {:else if cat.key === 'saving'}
-            <span class="cat-note link" role="button" tabindex="0" onclick={() => currentView.set('hutang')} onkeydown={(e) => e.key === 'Enter' && currentView.set('hutang')}>Feeds your Hutang pot &rarr;</span>
+            <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('hutang'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('hutang')}>Feeds your Hutang pot &rarr;</span>
           {:else}
             <span class="cat-note" class:over={info.over} class:under={!info.over}>
               {info.over ? `Over by RM ${fmt(cat.actual - cat.planned)}` : `RM ${fmt(cat.planned - cat.actual)} left`}
             </span>
           {/if}
         </div>
-        <button class="lock-btn" aria-label={cat.locked ? 'Unlock category' : 'Lock category'} onclick={() => toggleLock(cat.key)}>
+        <button class="lock-btn" aria-label={cat.locked ? 'Unlock category' : 'Lock category'} onclick={(e) => { e.stopPropagation(); toggleLock(cat.key); }}>
           {#if cat.locked}
             <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--gold)" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round"/></svg>
           {:else}
@@ -165,6 +162,8 @@
 {:else}
   <p class="sub">Loading...</p>
 {/if}
+
+<CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
 
 <style>
   .lock-btn {

@@ -11,6 +11,18 @@
   let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
   let importing = $state(false);
   let pendingImportFile = $state(null);
+  let additionalIncomeAmount = $state('');
+
+  async function addAdditionalIncome() {
+    const amt = parseFloat(additionalIncomeAmount);
+    if (!amt) {
+      showToast('Enter an amount first');
+      return;
+    }
+    await db.months.update(month.key, { bonus: (month.bonus || 0) + amt });
+    additionalIncomeAmount = '';
+    showToast(`Added RM ${fmt(amt)} additional income`);
+  }
 
   async function updateIncome(e) {
     const value = parseFloat(e.target.value) || month.income;
@@ -77,6 +89,19 @@
   <div class="card" style="display:flex; align-items:center; justify-content:space-between;">
     <span style="font-size:13.5px; color:var(--lo);">Monthly net income</span>
     <input class="set-amt" style="width:100px;" value={month.income.toFixed(2)} onchange={updateIncome} />
+  </div>
+
+  <div class="section-hd"><h3>Additional income</h3><span>this cycle</span></div>
+  <div class="card">
+    <div class="set-row" style="border:none;">
+      <span style="flex:1; font-size:13.5px; color:var(--lo);">Added so far this month</span>
+      <span class="num" style="font-weight:700;">RM {fmt(month.bonus || 0)}</span>
+    </div>
+    <p class="hint" style="margin:2px 0 10px;">For money received mid-cycle (freelance, gift, refund) — counts the same way a start-of-cycle bonus does, flowing straight into Ad-hoc.</p>
+    <div style="display:flex; gap:8px;">
+      <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={additionalIncomeAmount} style="flex:1;" />
+      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px;" onclick={addAdditionalIncome}>Add</button>
+    </div>
   </div>
 {/if}
 

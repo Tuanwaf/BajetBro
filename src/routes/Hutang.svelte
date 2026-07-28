@@ -36,6 +36,10 @@
   let dividendLabel = $state('');
   let dividendAmount = $state('');
 
+  let editingDividendId = $state(null);
+  let editLabel = $state('');
+  let editAmount = $state('');
+
   async function addDividend() {
     const amt = parseFloat(dividendAmount);
     if (!amt) {
@@ -48,6 +52,32 @@
     dividendLabel = '';
     dividendAmount = '';
     showToast(`Added ${label} · RM ${fmt(amt)}`);
+  }
+
+  function startEditDividend(div) {
+    editingDividendId = div.id;
+    editLabel = div.label;
+    editAmount = String(div.amount);
+  }
+
+  function cancelEditDividend() {
+    editingDividendId = null;
+  }
+
+  async function saveEditDividend() {
+    const amt = parseFloat(editAmount);
+    if (!amt) {
+      showToast('Enter a dividend amount first');
+      return;
+    }
+    await db.dividends.update(editingDividendId, { label: editLabel.trim() || 'Dividend', amount: amt });
+    editingDividendId = null;
+    showToast('Dividend updated');
+  }
+
+  async function deleteDividend(div) {
+    await db.dividends.delete(div.id);
+    showToast(`Removed ${div.label}`);
   }
 </script>
 
@@ -117,6 +147,33 @@
       <div class="stat"><div class="k">Savings</div><div class="v num">{fmt(personalSavings)}</div></div>
       <div class="stat"><div class="k">Dividend</div><div class="v num up">{fmt(dividendsTotal)}</div></div>
     </div>
+    {#if divs.length}
+      <div class="dividend-list">
+        {#each divs as div (div.id)}
+          {#if editingDividendId === div.id}
+            <div class="dividend-edit">
+              <input class="note-input" placeholder="Label" bind:value={editLabel} />
+              <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={editAmount} />
+              <div style="display:flex; gap:8px;">
+                <button class="io-btn" style="flex:1;" onclick={cancelEditDividend}>Cancel</button>
+                <button class="save-btn" style="flex:1; margin-top:0;" onclick={saveEditDividend}>Save</button>
+              </div>
+            </div>
+          {:else}
+            <div class="dividend-row">
+              <span class="dividend-label">{div.label}</span>
+              <span class="num" style="margin-right:8px;">RM {fmt(div.amount)}</span>
+              <button class="icon-btn small" aria-label="Edit dividend" onclick={() => startEditDividend(div)}>
+                <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="icon-btn small" aria-label="Delete dividend" onclick={() => deleteDividend(div)}>
+                <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
     <button class="add-dividend-btn" onclick={() => (dividendFormOpen = !dividendFormOpen)}>+ Add dividend</button>
     {#if dividendFormOpen}
       <div style="position:relative; z-index:1;">
@@ -140,3 +197,36 @@
   </div>
 </div>
 <p class="hint">Once an ASB account opens, it becomes a second growth vehicle here — same Contribution pattern as Tabung Haji, plus its own yearly Dividend entry.</p>
+
+<style>
+  .dividend-list {
+    position: relative;
+    z-index: 1;
+    margin-top: 12px;
+  }
+  .dividend-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--stroke);
+  }
+  .dividend-row:last-child {
+    border-bottom: none;
+  }
+  .dividend-label {
+    flex: 1;
+    font-size: 13px;
+    color: var(--hi);
+  }
+  .icon-btn.small {
+    width: 28px;
+    height: 28px;
+  }
+  .dividend-edit {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--stroke);
+  }
+  .dividend-edit .note-input {
+    margin-bottom: 8px;
+  }
+</style>
