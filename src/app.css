@@ -38,6 +38,7 @@
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
+html, body { height: 100%; }
 button, .chip, .tab, .month-row, .cat-row {
   touch-action: manipulation;
   -webkit-user-select: none;
@@ -47,53 +48,68 @@ button { transition: transform 0.1s ease; font-family: inherit; cursor: pointer;
 button:active, .chip:active { transform: scale(0.96); }
 input { font-family: inherit; }
 
-/* Natural document scrolling (NOT an inner overflow:auto scroller).
-   This is deliberate: on iOS standalone PWAs, backdrop-filter does NOT
-   reliably sample content that lives inside an overflow:auto/scroll
-   container -- which is why the frosted notch worked in a desktop browser
-   but rendered as a dead bar once installed to the Home Screen. The
-   document/body scroll IS sampled correctly, so the blur works in the PWA.
-   The bottom tab bar and top blur stay position:fixed, so they remain
-   locked while the body scrolls under them. */
-html {
-  background: var(--ink-2);
-  overscroll-behavior-y: none;
-}
 body {
   margin: 0;
-  min-height: 100dvh;
   background: var(--ink-2);
   color: var(--hi);
   font-family: var(--body);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior-y: none;
+}
+
+/* Lock the document itself so it can never scroll or rubber-band on iOS --
+   only .view (below) scrolls. Without this, fast/repeated scroll gestures
+   can rubber-band the whole page, which is what breaks the notch/status-bar
+   overlay and makes content appear to shift or get clipped underneath it. */
+html, body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--ink-2);
+}
+
+#app {
+  height: 100%;
 }
 
 .app-shell {
   position: relative;
-  min-height: 100dvh;
+  height: 100%;
   background: var(--ink-2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .view {
-  /* Content extends to y=0 so it scrolls *under* the fixed status-bar blur.
-     Top padding keeps the first item clear of the notch at rest; bottom
-     padding clears the fixed tab bar. */
-  padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px
-    calc(env(safe-area-inset-bottom, 0px) + 104px);
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* Content extends up to y=0 so it scrolls *under* the status-bar overlay
+     below. The top padding keeps the first item clear of the notch at rest. */
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 100px;
+  scrollbar-width: none;
 }
+.view::-webkit-scrollbar { display: none; }
 
-/* Frosted status-bar overlay. Fixed to the viewport with its own compositing
-   layer; backdrop-filter blurs the body content scrolling behind it. A
-   top-opaque -> transparent gradient is baked in as a fallback so that even
-   where backdrop-filter can't render, content fades into the notch instead
-   of hard-clipping. */
+/* Frosted status-bar overlay.
+   Third approach after two failed attempts on-device -- the previous ones
+   almost certainly died because `-webkit-overflow-scrolling: touch` (now
+   removed) forced the scroller onto a compositing layer that WebKit refuses
+   to run backdrop-filter against. This is a plain fixed sibling of .view with
+   its own layer (translateZ), so the blur samples the composited page behind.
+   Belt-and-suspenders: the background is ALSO a top-opaque -> transparent
+   gradient, so if backdrop-filter still won't render on this device, content
+   gracefully fades into the notch instead of hard-clipping -- no dead bar. */
 .status-bar-blur {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: calc(env(safe-area-inset-top, 0px) + 12px);
+  height: calc(env(safe-area-inset-top, 0px) + 10px);
   z-index: 100;
   pointer-events: none;
   background: linear-gradient(
@@ -110,26 +126,6 @@ body {
 
 .page { display: none; }
 .page.active { display: block; }
-
-/* Gentle staggered rise for the major blocks of whichever page is active --
-   re-triggers on each tab switch so content feels like it settles into place
-   rather than snapping in. `:not(.sheet)` is critical: bottom-sheet overlays
-   are rendered inside their page, and a rise animation with fill:both would
-   override their translateY(100%) hide transform and pin them open. */
-.page.active > *:not(.sheet) {
-  animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-.page.active > *:not(.sheet):nth-child(1) { animation-delay: 0.02s; }
-.page.active > *:not(.sheet):nth-child(2) { animation-delay: 0.06s; }
-.page.active > *:not(.sheet):nth-child(3) { animation-delay: 0.10s; }
-.page.active > *:not(.sheet):nth-child(4) { animation-delay: 0.14s; }
-.page.active > *:not(.sheet):nth-child(5) { animation-delay: 0.18s; }
-.page.active > *:not(.sheet):nth-child(6) { animation-delay: 0.22s; }
-.page.active > *:not(.sheet):nth-child(n + 7) { animation-delay: 0.26s; }
-@keyframes rise {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
 
 h2.title {
   font-family: var(--display);

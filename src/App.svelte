@@ -11,17 +11,18 @@
 
   let addSheetOpen = $state(false);
   let endMonthSheetOpen = $state(false);
+  let viewEl = $state(null);
 
-  // Every page shares one document scroll, so switching tabs would otherwise
+  // All pages share one scroll container, so switching tabs would otherwise
   // inherit the previous page's scroll offset. Reset to the top on change.
   $effect(() => {
     $currentView;
-    window.scrollTo(0, 0);
+    if (viewEl) viewEl.scrollTop = 0;
   });
 </script>
 
 <div class="app-shell">
-  <div class="view">
+  <div class="view" bind:this={viewEl}>
     <section class="page" class:active={$currentView === 'home'}>
       <Home onEndMonth={() => (endMonthSheetOpen = true)} />
     </section>
