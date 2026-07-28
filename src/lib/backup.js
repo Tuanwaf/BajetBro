@@ -33,8 +33,17 @@ export async function exportBackup() {
 }
 
 export async function importBackup(file) {
-  const text = await file.text();
-  const data = JSON.parse(text);
+  const raw = await file.text();
+  // Some mobile share/transfer paths (AirDrop, cloud sync, messaging apps)
+  // prepend a UTF-8 BOM, which breaks JSON.parse if left in.
+  const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Not valid JSON (${err.message})`);
+  }
 
   if (data.schemaVersion !== SCHEMA_VERSION) {
     throw new Error(`Unsupported backup schema version: ${data.schemaVersion}`);

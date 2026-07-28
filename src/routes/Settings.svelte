@@ -10,6 +10,7 @@
   let month = $derived($currentMonth);
   let adhocPlanned = $derived(month && tmpl ? computeAdhocPlanned(month, tmpl) : 0);
   let importing = $state(false);
+  let pendingImportFile = $state(null);
 
   async function updateIncome(e) {
     const value = parseFloat(e.target.value) || month.income;
@@ -24,22 +25,31 @@
     await db.template.put({ ...tmpl, categories: updated });
   }
 
-  async function handleImport(e) {
+  function handlePickFile(e) {
     const file = e.target.files[0];
+    e.target.value = '';
     if (!file) return;
-    if (!confirm('Importing will replace all current local data. Continue?')) {
-      e.target.value = '';
-      return;
-    }
+    // A native confirm() dialog isn't reliably supported when this app is
+    // installed to the Home Screen on iOS, so this uses an in-app prompt
+    // instead of window.confirm().
+    pendingImportFile = file;
+  }
+
+  function cancelImport() {
+    pendingImportFile = null;
+  }
+
+  async function confirmImport() {
+    const file = pendingImportFile;
+    pendingImportFile = null;
     importing = true;
     try {
       await importBackup(file);
       showToast('Backup restored');
     } catch (err) {
-      showToast('That file could not be read — is it a BajetBro export?');
+      showToast(`Import failed: ${err.message}`);
     } finally {
       importing = false;
-      e.target.value = '';
     }
   }
 
@@ -94,7 +104,18 @@
   <label class="io-btn" style="cursor:pointer;">
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12M7 10l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Import backup
-    <input type="file" accept="application/json" onchange={handleImport} disabled={importing} style="display:none" />
+    <input type="file" accept=".json,application/json" onchange={handlePickFile} disabled={importing} style="display:none" />
   </label>
   <p class="hint">Everything — commitments, this cycle, Hutang pots, dividends — bundles into one file. Import it on your next device to pick up exactly where you left off.</p>
 </div>
+
+{#if pendingImportFile}
+  <div class="card" style="margin-top:12px; border-color:var(--red);">
+    <div class="cat-name-row" style="margin-bottom:8px;"><span>Replace all local data?</span></div>
+    <p class="hint" style="margin:0 0 14px;">Importing "{pendingImportFile.name}" will overwrite everything currently stored on this device. This can't be undone.</p>
+    <div style="display:flex; gap:10px;">
+      <button class="io-btn" style="flex:1;" onclick={cancelImport}>Cancel</button>
+      <button class="save-btn" style="flex:1; margin-top:0;" onclick={confirmImport}>Import</button>
+    </div>
+  </div>
+{/if}

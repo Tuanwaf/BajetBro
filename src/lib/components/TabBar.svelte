@@ -26,7 +26,7 @@
   {/each}
 
   <div class="tab-spacer"></div>
-  <button class="fab" onclick={onAddClick}>
+  <button class="fab" aria-label="Add expense" onclick={onAddClick}>
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#241a05" stroke-width="2.4" stroke-linecap="round"/></svg>
   </button>
 

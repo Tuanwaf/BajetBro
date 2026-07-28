@@ -29,6 +29,10 @@ dist-ssr
 # Source data images (not for the repo)
 Image.jpg
 hutang.jpg
+*.jpg
+*.jpeg
+*.png
+!public/icons/*.png
 
 # Personal financial data backups (never commit real figures)
 bajetbro-initial-backup.json
