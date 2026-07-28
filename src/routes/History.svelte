@@ -54,16 +54,20 @@
         current: true,
       });
     }
-    return rows.map((r) => ({
-      ...r,
+    return rows.map((r) => {
       // Falls back to Income for the first tracked month, which predates
-      // rolling-balance tracking and has no Starting figure of its own.
-      // Starting already has that month's income folded in, so unlike the
-      // Income fallback, it should only add bonus (not income again) below.
-      primaryLabel: r.startingBalance != null ? 'Starting' : 'Income',
-      primaryValue: r.startingBalance != null ? r.startingBalance : r.income,
-      delta: r.startingBalance != null ? r.startingBalance + r.bonus - r.spend : r.income - r.spend,
-    }));
+      // rolling-balance tracking and has no Total balance figure of its own.
+      // Total balance already has that month's income folded in, so unlike
+      // the Income fallback, it only needs bonus added (not income again).
+      const hasBalance = r.startingBalance != null;
+      const primaryValue = hasBalance ? r.startingBalance + r.bonus : r.income;
+      return {
+        ...r,
+        primaryLabel: hasBalance ? 'Total balance' : 'Income',
+        primaryValue,
+        delta: primaryValue - r.spend,
+      };
+    });
   });
 
   let expandedKey = $state(null);
@@ -92,15 +96,16 @@
   </div>
 </div>
 
-<div class="section-hd"><h3>Monthly log</h3><span>Starting vs spent</span></div>
+<div class="section-hd"><h3>Monthly log</h3><span>Total balance vs spent</span></div>
 <div class="card">
   {#each allMonths as m (m.key)}
     <div class="month-row" class:open={expandedKey === m.key} onclick={() => toggle(m.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && toggle(m.key)}>
-      <div>
+      <div class="month-row-info">
         <div class="name">{m.name}{m.current ? ' · current' : ''}</div>
-        <div class="sub2">{m.primaryLabel} RM {fmt(m.primaryValue)} · Spent RM {fmt(m.spend)}</div>
+        <div class="sub2">{m.primaryLabel} RM {fmt(m.primaryValue)}</div>
+        <div class="sub2">Spent RM {fmt(m.spend)}</div>
       </div>
-      <div class="right" style="display:flex; align-items:center; gap:8px;">
+      <div class="right">
         <span class="pill" class:good={m.delta >= 0} class:bad={m.delta < 0}>{m.delta >= 0 ? '+' : '-'}RM {fmt(Math.abs(m.delta))}</span>
         <svg class="chev" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
@@ -109,7 +114,7 @@
       <div class="detail-figures">
         <span>Income <b class="num">RM {fmt(m.income)}</b></span>
         {#if m.startingBalance != null}
-          <span>Starting <b class="num">RM {fmt(m.startingBalance)}</b></span>
+          <span>Total balance <b class="num">RM {fmt(m.primaryValue)}</b></span>
         {/if}
       </div>
       {#each m.categories as cat (cat.key)}
@@ -133,6 +138,17 @@
 </div>
 
 <style>
+  .month-row-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .month-row .right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
   .detail-figures {
     display: flex;
     gap: 16px;

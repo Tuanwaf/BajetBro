@@ -5,6 +5,7 @@
     computeAdhocActual,
     computeSpentTotal,
     computeTotalRemaining,
+    computeTotalBalance,
     computeTabungHajiTotal,
     computePlannedTotal,
     round2,
@@ -28,6 +29,7 @@
   let adhocActual = $derived(month ? computeAdhocActual(month) : 0);
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
   let totalRemaining = $derived(month ? computeTotalRemaining(month) : 0);
+  let totalBalance = $derived(month ? computeTotalBalance(month) : null);
   let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
   let tabungHajiTotal = $derived(th ? computeTabungHajiTotal(th, pots, divs) : 0);
 
@@ -69,8 +71,8 @@
     <div class="balance-amt"><span class="cur">RM</span>{fmt(totalRemaining)}</div>
     <div class="balance-row">
       <div class="stat">
-        <div class="k">Starting</div>
-        <div class="v num">{month.startingBalance != null ? 'RM ' + fmt(month.startingBalance) : '—'}</div>
+        <div class="k">Total balance</div>
+        <div class="v num">{totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}</div>
       </div>
       <div class="stat">
         <div class="k">Net income</div>

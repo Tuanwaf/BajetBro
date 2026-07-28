@@ -48,15 +48,23 @@ export function computeRemaining(month) {
   return round2(income - computeSpentTotal(month));
 }
 
+// The comprehensive "Total balance" figure: the rolled-forward balance plus
+// any bonus/additional income logged this cycle. `month.startingBalance`
+// already has this month's own base income folded into it (it's a running
+// cumulative total, not "leftover before income arrived") -- bonus is the
+// only piece not yet reflected in it, since it can be added anytime mid-cycle
+// via Settings, after Starting was already set.
+export function computeTotalBalance(month) {
+  if (month.startingBalance == null) return null;
+  return round2(month.startingBalance + (month.bonus || 0));
+}
+
 // True cash-on-hand and the figure that rolls forward into next month's
-// Starting balance. IMPORTANT: `month.startingBalance` already has this
-// month's own income folded into it (it's a running cumulative total, not
-// "leftover before this month's income arrived") -- so this must NOT add
-// month.income again on top, only any extra bonus/additional income, which
-// genuinely isn't reflected in Starting yet.
+// Total balance.
 export function computeTotalRemaining(month) {
-  if (month.startingBalance != null) {
-    return round2(month.startingBalance + (month.bonus || 0) - computeSpentTotal(month));
+  const totalBalance = computeTotalBalance(month);
+  if (totalBalance != null) {
+    return round2(totalBalance - computeSpentTotal(month));
   }
   return computeRemaining(month);
 }

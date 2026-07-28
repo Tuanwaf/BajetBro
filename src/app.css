@@ -104,9 +104,11 @@ html, body {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: env(safe-area-inset-top, 0px);
-  background: rgba(13, 15, 20, 0.55);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: rgba(13, 15, 20, 0.45);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
   z-index: 45;
   pointer-events: none;
 }
@@ -377,7 +379,7 @@ h2.title {
 .legend .row .name { display: flex; align-items: center; gap: 7px; color: var(--lo); }
 .legend .row b { font-family: var(--mono); color: var(--hi); font-weight: 600; }
 
-.month-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 4px; border-bottom: 1px solid var(--stroke); cursor: pointer; }
+.month-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 4px; border-bottom: 1px solid var(--stroke); cursor: pointer; }
 .month-row:last-child { border-bottom: none; }
 .month-row .name { font-size: 14.5px; font-weight: 700; }
 .month-row .sub2 { font-size: 11.5px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }

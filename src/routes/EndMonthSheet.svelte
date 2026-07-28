@@ -1,6 +1,6 @@
 <script>
   import { currentMonth, template, hutangPots } from '../lib/stores.js';
-  import { computeSpentTotal, computeTotalRemaining, computeOpenPots, computePersonalSavings, round2 } from '../lib/calc.js';
+  import { computeSpentTotal, computeTotalRemaining, computeTotalBalance, computeOpenPots, computePersonalSavings, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { MONTH_NAMES } from '../lib/constants.js';
@@ -27,6 +27,7 @@
 
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
   let leftover = $derived(month ? computeTotalRemaining(month) : 0);
+  let totalBalance = $derived(month ? computeTotalBalance(month) : null);
   let openPotsNow = $derived(computeOpenPots(pots));
   let personalSavings = $derived(computePersonalSavings(pots));
 
@@ -88,7 +89,7 @@
         <p class="sub" style="margin-top:4px;">Here's how it wrapped up before it moves to History.</p>
         <div class="card" style="margin-bottom:14px;">
           <div class="balance-row">
-            <div class="stat"><div class="k">Starting</div><div class="v num">{month.startingBalance != null ? 'RM ' + fmt(month.startingBalance) : '—'}</div></div>
+            <div class="stat"><div class="k">Total balance</div><div class="v num">{totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}</div></div>
             <div class="stat"><div class="k">Spent</div><div class="v num">RM {fmt(spentTotal)}</div></div>
             <div class="stat"><div class="k">Left over</div><div class="v num" class:up={leftover >= 0} class:down={leftover < 0}>{leftover >= 0 ? 'RM ' : '-RM '}{fmt(Math.abs(leftover))}</div></div>
           </div>
