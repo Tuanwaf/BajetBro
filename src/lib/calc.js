@@ -2,33 +2,48 @@ export function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-// Locking a category freezes its actual spend and sends whatever's left of
-// its original planned amount (planned - actual, captured once at lock time
-// as `lockedLeftover`) over to Ad-hoc. The category's own `planned` label is
-// left untouched -- it's just historical context once locked -- so this
-// adjustment is added on top rather than changing the base subtraction,
-// which keeps the total always netting back to income + bonus regardless of
-// how many categories are locked.
-export function computeLockedAdjustment(month) {
-  return round2((month.categories || []).filter((c) => c.locked).reduce((s, c) => s + (c.lockedLeftover || 0), 0));
-}
-
-export function computeAdhocPlanned(month) {
-  const coreSum = (month.categories || []).reduce((s, c) => s + c.planned, 0);
+// How much each category currently contributes to (or draws from) the
+// shared Ad-hoc pool:
+// - Locked categories use their frozen `lockedLeftover` snapshot (planned -
+//   actual at the moment they were locked) -- that amount was a deliberate,
+//   one-time "I'm done spending here" declaration.
+// - Unlocked categories that are OVER their planned amount draw from the
+//   pool automatically and continuously -- an overspend has *already*
+//   happened, there's no ambiguity to wait on, so Ad-hoc reflects it in
+//   real time (e.g. voluntarily sending extra money to Saving beyond its
+//   plan immediately shrinks Ad-hoc by that same amount).
+// - Unlocked categories that are UNDER their planned amount do NOT credit
+//   Ad-hoc yet -- being under budget so far this month doesn't mean the
+//   category is finished (you might just not have bought groceries yet);
+//   that only happens once the category is explicitly locked.
+export function computeLiveAdjustment(month) {
   return round2(
-    Math.max(0, month.income - coreSum) +
-      (month.bonus || 0) +
-      (month.additionalIncome || 0) +
-      computeLockedAdjustment(month)
+    (month.categories || []).reduce((s, c) => {
+      if (c.locked) return s + (c.lockedLeftover || 0);
+      return s + Math.min(0, c.planned - c.actual);
+    }, 0)
   );
 }
 
-// Total "Commitments" figure shown on Home: unlocked categories still count
-// their planned amount, but locked ones count their frozen actual instead
-// (their remaining budget already moved to Ad-hoc), plus Ad-hoc itself.
+// Ad-hoc's planned figure is based on the comprehensive Income (rolled-
+// forward balance + salary + bonus + additional income), NOT just this
+// month's Salary -- otherwise Ad-hoc understates what's actually available
+// and never matches the Income figure shown elsewhere on Home.
+export function computeAdhocPlanned(month) {
+  const coreSum = (month.categories || []).reduce((s, c) => s + c.planned, 0);
+  const totalBalance = computeTotalBalance(month);
+  const base = totalBalance != null ? totalBalance : (month.income || 0) + (month.bonus || 0) + (month.additionalIncome || 0);
+  return round2(Math.max(0, base - coreSum) + computeLiveAdjustment(month));
+}
+
+// Total "Commitments" figure shown on Home: categories that are either
+// locked or currently over their planned amount count their actual spend
+// instead (that's what's really been drawn from the pool), everyone else
+// counts their planned figure, plus Ad-hoc itself. This always nets back to
+// exactly the Income figure, regardless of locking or overspending.
 export function computePlannedTotal(month) {
   const categories = month.categories || [];
-  const coreTotal = categories.reduce((s, c) => s + (c.locked ? c.actual : c.planned), 0);
+  const coreTotal = categories.reduce((s, c) => s + (c.locked || c.actual > c.planned ? c.actual : c.planned), 0);
   return round2(coreTotal + computeAdhocPlanned(month));
 }
 
