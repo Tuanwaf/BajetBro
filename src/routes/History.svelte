@@ -34,6 +34,7 @@
       key: m.key,
       name: m.label,
       income: m.income + (m.bonus || 0),
+      bonus: m.bonus || 0,
       startingBalance: m.startingBalance,
       spend: m.recordedTotal,
       categories: m.categories,
@@ -45,6 +46,7 @@
         key: month.key,
         name: month.label,
         income: month.income + (month.bonus || 0),
+        bonus: month.bonus || 0,
         startingBalance: month.startingBalance,
         spend: computeSpentTotal(month),
         categories: month.categories,
@@ -56,8 +58,11 @@
       ...r,
       // Falls back to Income for the first tracked month, which predates
       // rolling-balance tracking and has no Starting figure of its own.
+      // Starting already has that month's income folded in, so unlike the
+      // Income fallback, it should only add bonus (not income again) below.
       primaryLabel: r.startingBalance != null ? 'Starting' : 'Income',
       primaryValue: r.startingBalance != null ? r.startingBalance : r.income,
+      delta: r.startingBalance != null ? r.startingBalance + r.bonus - r.spend : r.income - r.spend,
     }));
   });
 
@@ -90,14 +95,13 @@
 <div class="section-hd"><h3>Monthly log</h3><span>Starting vs spent</span></div>
 <div class="card">
   {#each allMonths as m (m.key)}
-    {@const delta = m.primaryValue - m.spend}
     <div class="month-row" class:open={expandedKey === m.key} onclick={() => toggle(m.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && toggle(m.key)}>
       <div>
         <div class="name">{m.name}{m.current ? ' · current' : ''}</div>
         <div class="sub2">{m.primaryLabel} RM {fmt(m.primaryValue)} · Spent RM {fmt(m.spend)}</div>
       </div>
       <div class="right" style="display:flex; align-items:center; gap:8px;">
-        <span class="pill" class:good={delta >= 0} class:bad={delta < 0}>{delta >= 0 ? '+' : '-'}RM {fmt(Math.abs(delta))}</span>
+        <span class="pill" class:good={m.delta >= 0} class:bad={m.delta < 0}>{m.delta >= 0 ? '+' : '-'}RM {fmt(Math.abs(m.delta))}</span>
         <svg class="chev" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
     </div>

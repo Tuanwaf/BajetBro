@@ -35,4 +35,6 @@
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
 
   <Toast />
+
+  <div class="status-bar-overlay"></div>
 </div>

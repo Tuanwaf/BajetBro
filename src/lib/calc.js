@@ -41,22 +41,24 @@ export function computeSpentTotal(month) {
   return round2(computeCoreActual(month) + computeAdhocActual(month));
 }
 
+// Bootstrap-only fallback: this month's own income-minus-spend, for the rare
+// case a month has no Starting balance yet (nothing to roll forward from).
 export function computeRemaining(month) {
   const income = (month.income || 0) + (month.bonus || 0);
   return round2(income - computeSpentTotal(month));
 }
 
-// True cash-on-hand: this month's own income-minus-spend, plus whatever
-// rolled forward from previous months. This is the figure that should drive
-// the Home dashboard's "Remaining this month" hero number -- using
-// computeRemaining() alone ignores the rollover and understates it.
+// True cash-on-hand and the figure that rolls forward into next month's
+// Starting balance. IMPORTANT: `month.startingBalance` already has this
+// month's own income folded into it (it's a running cumulative total, not
+// "leftover before this month's income arrived") -- so this must NOT add
+// month.income again on top, only any extra bonus/additional income, which
+// genuinely isn't reflected in Starting yet.
 export function computeTotalRemaining(month) {
-  return round2((month.startingBalance || 0) + computeRemaining(month));
-}
-
-export function computeRollsToNext(month) {
-  if (month.startingBalance == null) return null;
-  return round2(month.startingBalance + computeRemaining(month));
+  if (month.startingBalance != null) {
+    return round2(month.startingBalance + (month.bonus || 0) - computeSpentTotal(month));
+  }
+  return computeRemaining(month);
 }
 
 export function computePotRemain(pot) {

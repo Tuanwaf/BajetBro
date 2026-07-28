@@ -1,6 +1,6 @@
 <script>
   import { currentMonth, template, hutangPots } from '../lib/stores.js';
-  import { computeSpentTotal, computeRemaining, computeOpenPots, computePersonalSavings } from '../lib/calc.js';
+  import { computeSpentTotal, computeTotalRemaining, computeOpenPots, computePersonalSavings, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { MONTH_NAMES } from '../lib/constants.js';
@@ -26,7 +26,7 @@
   });
 
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
-  let remaining = $derived(month ? computeRemaining(month) : 0);
+  let leftover = $derived(month ? computeTotalRemaining(month) : 0);
   let openPotsNow = $derived(computeOpenPots(pots));
   let personalSavings = $derived(computePersonalSavings(pots));
 
@@ -42,7 +42,9 @@
     const newOrder = Number(newKey.split('-')[1]);
     const newLabel = MONTH_NAMES[newOrder - 1];
     const bonusAmt = bonusOn ? parseFloat(bonusAmount) || 0 : 0;
-    const newStartingBalance = month.startingBalance != null ? month.startingBalance + remaining : null;
+    // `leftover` is exactly what should carry forward; the new cycle's own
+    // Starting balance is that plus its (this closing month's) income baseline.
+    const newStartingBalance = round2(leftover + month.income);
 
     await db.transaction('rw', db.months, db.hutangPots, async () => {
       await db.months.update(month.key, { closed: 1, recordedTotal: spentTotal });
@@ -86,9 +88,9 @@
         <p class="sub" style="margin-top:4px;">Here's how it wrapped up before it moves to History.</p>
         <div class="card" style="margin-bottom:14px;">
           <div class="balance-row">
-            <div class="stat"><div class="k">Income</div><div class="v num">RM {fmt(month.income + (month.bonus || 0))}</div></div>
+            <div class="stat"><div class="k">Starting</div><div class="v num">{month.startingBalance != null ? 'RM ' + fmt(month.startingBalance) : '—'}</div></div>
             <div class="stat"><div class="k">Spent</div><div class="v num">RM {fmt(spentTotal)}</div></div>
-            <div class="stat"><div class="k">Left over</div><div class="v num" class:up={remaining >= 0} class:down={remaining < 0}>{remaining >= 0 ? 'RM ' : '-RM '}{fmt(Math.abs(remaining))}</div></div>
+            <div class="stat"><div class="k">Left over</div><div class="v num" class:up={leftover >= 0} class:down={leftover < 0}>{leftover >= 0 ? 'RM ' : '-RM '}{fmt(Math.abs(leftover))}</div></div>
           </div>
         </div>
         <div class="card">
