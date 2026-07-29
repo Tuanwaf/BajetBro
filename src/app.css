@@ -95,31 +95,40 @@ html, body {
 }
 .view::-webkit-scrollbar { display: none; }
 
-/* Frosted status-bar overlay.
-   Third approach after two failed attempts on-device -- the previous ones
-   almost certainly died because `-webkit-overflow-scrolling: touch` (now
-   removed) forced the scroller onto a compositing layer that WebKit refuses
-   to run backdrop-filter against. This is a plain fixed sibling of .view with
-   its own layer (translateZ), so the blur samples the composited page behind.
-   Belt-and-suspenders: the background is ALSO a top-opaque -> transparent
-   gradient, so if backdrop-filter still won't render on this device, content
-   gracefully fades into the notch instead of hard-clipping -- no dead bar. */
+/* Frosted status-bar overlay -- Instagram-style: the frost sits OVER the
+   notch / Dynamic Island, with content visible (blurred + darkened) behind
+   the status-bar text, then melting into the sharp content below.
+
+   The blur (a fixed sibling of .view on its own translateZ layer) samples the
+   composited page behind it and DOES render in the installed PWA. The reason
+   it previously looked like a solid bar *below* the notch was the tint: the
+   old gradient started fully opaque (var(--ink-2), alpha 1) over the status
+   bar, painting a hard bar and hiding the content behind it.
+
+   Fix: keep the tint TRANSLUCENT the whole way down (a dark scrim strong
+   enough to keep white status-bar glyphs legible, but never solid), so the
+   blurred content shows through behind the island. The mask then fades the
+   entire layer -- blur included -- out at the bottom, so the frost dissolves
+   smoothly into the sharp content instead of ending on a hard edge. */
 .status-bar-blur {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: calc(env(safe-area-inset-top, 0px) + 10px);
+  height: calc(env(safe-area-inset-top, 0px) + 20px);
   z-index: 100;
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    var(--ink-2) 0%,
-    rgba(13, 15, 20, 0.72) 55%,
+    rgba(13, 15, 20, 0.6) 0%,
+    rgba(13, 15, 20, 0.45) 45%,
+    rgba(13, 15, 20, 0.2) 75%,
     rgba(13, 15, 20, 0) 100%
   );
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
   transform: translateZ(0);
   will-change: transform;
 }
