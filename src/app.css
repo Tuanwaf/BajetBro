@@ -38,7 +38,10 @@
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
-html, body { height: 100%; }
+html {
+  background: var(--ink-2);
+  overscroll-behavior-y: none;
+}
 button, .chip, .tab, .month-row, .cat-row {
   touch-action: manipulation;
   -webkit-user-select: none;
@@ -50,60 +53,44 @@ input { font-family: inherit; }
 
 body {
   margin: 0;
+  min-height: 100dvh;
   background: var(--ink-2);
   color: var(--hi);
   font-family: var(--body);
   -webkit-font-smoothing: antialiased;
-}
-
-/* Lock the document itself so it can never scroll or rubber-band on iOS --
-   only .view (below) scrolls. Without this, fast/repeated scroll gestures
-   can rubber-band the whole page, which is what breaks the notch/status-bar
-   overlay and makes content appear to shift or get clipped underneath it. */
-html, body {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-  background: var(--ink-2);
-}
-
-#app {
-  height: 100%;
+  overscroll-behavior-y: none;
 }
 
 .app-shell {
   position: relative;
-  height: 100%;
+  min-height: 100dvh;
   background: var(--ink-2);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 
 .view {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  /* Content extends up to y=0 so it scrolls *under* the status-bar overlay
-     below. The top padding keeps the first item clear of the notch at rest. */
-  padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 100px;
-  scrollbar-width: none;
+  /* Natural DOCUMENT scroll -- deliberately NOT an inner overflow:auto
+     scroller. On iOS standalone PWAs, backdrop-filter only samples the
+     document/body scroll; content inside an overflow scroller is on its own
+     compositing layer that WebKit won't blur, which is why the frosted notch
+     rendered as a dead bar when installed. With the body scrolling, the fixed
+     status-bar blur below samples it correctly and the frost actually works.
+     Content runs to y=0 and scrolls UNDER the blur; the top padding keeps the
+     first item clear of the notch at rest, the bottom padding clears the
+     fixed tab bar. */
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px
+    calc(env(safe-area-inset-bottom, 0px) + 104px);
 }
-.view::-webkit-scrollbar { display: none; }
 
 /* Frosted status-bar overlay -- Instagram-style: the frost sits OVER the
    notch / Dynamic Island, with content visible (blurred + darkened) behind
    the status-bar text, then melting into the sharp content below.
 
-   The blur (a fixed sibling of .view on its own translateZ layer) samples the
-   composited page behind it and DOES render in the installed PWA. The reason
-   it previously looked like a solid bar *below* the notch was the tint: the
-   old gradient started fully opaque (var(--ink-2), alpha 1) over the status
-   bar, painting a hard bar and hiding the content behind it.
+   This is fixed to the viewport and blurs the natural body scroll behind it
+   (see .view: the document scrolls, so backdrop-filter actually samples it in
+   the installed PWA). Two things were previously wrong: (1) content lived in
+   an inner overflow scroller WebKit wouldn't blur, and (2) the tint started
+   fully opaque (var(--ink-2), alpha 1) over the status bar, painting a hard
+   bar that hid the content behind it. Both are fixed now.
 
    Fix: keep the tint TRANSLUCENT the whole way down (a dark scrim strong
    enough to keep white status-bar glyphs legible, but never solid), so the
