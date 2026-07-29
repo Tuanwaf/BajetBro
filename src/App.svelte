@@ -36,6 +36,8 @@
     </section>
   </div>
 
+  <div class="status-bar-blur"></div>
+
   <TabBar onAddClick={() => (addSheetOpen = true)} />
 
   <AddExpenseSheet open={addSheetOpen} onClose={() => (addSheetOpen = false)} />
