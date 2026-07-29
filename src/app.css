@@ -40,7 +40,9 @@
 }
 html {
   background: var(--ink-2);
-  /* auto (default) keeps the native iOS rubber-band bounce at the page ends */
+  /* Initial value only; App.svelte's refreshBounce() overrides this inline,
+     toggling auto/none so the iOS rubber-band bounce is on ONLY when the page
+     is actually tall enough to scroll. */
   overscroll-behavior-y: auto;
   scrollbar-width: none; /* Firefox: hide the scroll indicator */
 }

@@ -11,17 +11,45 @@
 
   let addSheetOpen = $state(false);
   let endMonthSheetOpen = $state(false);
+  let viewEl = $state(null);
+
+  // Only allow the iOS rubber-band bounce when the page is actually tall
+  // enough to scroll. On a short page (e.g. History before expanding a month)
+  // bouncing an unscrollable page feels wrong, so we lock overscroll to
+  // 'none' there and switch it back to 'auto' once content overflows.
+  function refreshBounce() {
+    const scrollable = document.documentElement.scrollHeight > window.innerHeight + 1;
+    const mode = scrollable ? 'auto' : 'none';
+    document.documentElement.style.overscrollBehaviorY = mode;
+    document.body.style.overscrollBehaviorY = mode;
+  }
 
   // Every page shares one document scroll, so switching tabs would otherwise
-  // inherit the previous page's scroll offset. Reset to the top on change.
+  // inherit the previous page's scroll offset. Reset to the top on change,
+  // then re-evaluate scrollability once the new page has rendered.
   $effect(() => {
     $currentView;
     window.scrollTo(0, 0);
+    requestAnimationFrame(refreshBounce);
+  });
+
+  // Re-check whenever the content's height changes -- expanding/collapsing a
+  // History month, data loading, etc. -- and on viewport resize/rotation.
+  $effect(() => {
+    if (!viewEl) return;
+    refreshBounce();
+    const ro = new ResizeObserver(refreshBounce);
+    ro.observe(viewEl);
+    window.addEventListener('resize', refreshBounce);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', refreshBounce);
+    };
   });
 </script>
 
 <div class="app-shell">
-  <div class="view">
+  <div class="view" bind:this={viewEl}>
     <section class="page" class:active={$currentView === 'home'}>
       <Home onEndMonth={() => (endMonthSheetOpen = true)} />
     </section>
