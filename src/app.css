@@ -361,28 +361,13 @@ h2.title {
   background: var(--panel); border: 1px solid var(--stroke);
   border-radius: 14px; padding: 14px 0; text-align: center;
   font-family: var(--mono); font-size: 19px; font-weight: 600; color: var(--hi);
-  /* Smooth "spring back" on release: the fill/scale eases out over ~0.32s
-     with an overshoot-free curve, so lifting off feels soft rather than a
-     hard snap. The press itself is made near-instant by the shorter
-     transition on .pressed below (snappy down, smooth up). */
-  transition:
-    background-color 0.32s ease,
-    border-color 0.32s ease,
-    color 0.32s ease,
-    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  /* The press flash is driven per-tap by the Web Animations API (see
+     flashKey in AddExpenseSheet.svelte) as one continuous gold→rest pulse,
+     which stays smooth on rapid taps where a CSS class-toggle would flicker.
+     will-change hints the compositor so the scale/color stay jank-free. */
+  will-change: transform, background-color;
 }
 .key.op { color: var(--lo); font-size: 15px; font-weight: 600; }
-.key.pressed {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: #241a05;
-  transform: scale(0.9);
-  transition:
-    background-color 0.04s ease,
-    border-color 0.04s ease,
-    color 0.04s ease,
-    transform 0.04s ease;
-}
 
 .save-btn {
   width: 100%; margin-top: 16px;

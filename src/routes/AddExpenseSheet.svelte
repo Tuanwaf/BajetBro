@@ -25,8 +25,6 @@
   const MAX_CENTS = 99999999; // RM 999,999.99
 
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
-  let pressedKey = $state(null);
-  let pressedTimer;
 
   function reset() {
     selectedCatKey = null;
@@ -42,7 +40,7 @@
     if (open) reset();
   });
 
-  function pressKey(k) {
+  function pressKey(k, ev) {
     if (k === '⌫') {
       kpCents = Math.floor(kpCents / 10);
     } else if (k === '00') {
@@ -50,19 +48,35 @@
     } else {
       kpCents = Math.min(MAX_CENTS, kpCents * 10 + Number(k));
     }
+    flashKey(ev?.currentTarget);
+  }
 
-    // Hold the "pressed" fill briefly so the snappy fill is clearly
-    // registered, then drop the class and let CSS ease it back out smoothly
-    // (see .key transition). CSS :active alone is too brief/inconsistent on a
-    // fast tap to feel like a real keypress.
-    clearTimeout(pressedTimer);
-    pressedKey = null;
-    // Re-assign on the next frame so a rapid re-tap of the same key still
-    // re-triggers the fill instead of being swallowed by the unchanged value.
-    requestAnimationFrame(() => {
-      pressedKey = k;
-      pressedTimer = setTimeout(() => (pressedKey = null), 130);
-    });
+  // Drive the keypress feedback as ONE self-contained pulse per tap via the
+  // Web Animations API: it lights gold instantly, holds a beat, then eases
+  // back to rest over a single continuous curve. Cancelling + restarting on
+  // each tap means a rapid re-tap of the same key restarts cleanly from full
+  // gold — no mid-fade flip/flicker like the old class-toggle approach.
+  function flashKey(el) {
+    if (!el || typeof el.animate !== 'function') return;
+    el.__flash?.cancel();
+    // Read the resting styles AFTER cancelling so the end frame lands exactly
+    // on the element's true rest state (numbers vs the ⌫ op key differ), which
+    // avoids a snap when the animation releases its hold on the styles.
+    const cs = getComputedStyle(el);
+    const rest = {
+      backgroundColor: cs.backgroundColor,
+      borderColor: cs.borderColor,
+      color: cs.color,
+    };
+    const lit = { backgroundColor: '#e7b34e', borderColor: '#e7b34e', color: '#241a05' };
+    el.__flash = el.animate(
+      [
+        { ...lit, transform: 'scale(0.95)', offset: 0 },
+        { ...lit, transform: 'scale(0.97)', offset: 0.18 },
+        { ...rest, transform: 'scale(1)', offset: 1 },
+      ],
+      { duration: 340, easing: 'cubic-bezier(0.33, 1, 0.68, 1)' }
+    );
   }
 
   function selectCat(key) {
@@ -238,7 +252,7 @@
     <div class="field-lbl">Amount</div>
     <div class="keypad">
       {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'] as k}
-        <button class="key" class:op={k === '⌫'} class:pressed={pressedKey === k} onclick={() => pressKey(k)}>{k}</button>
+        <button class="key" class:op={k === '⌫'} onclick={(e) => pressKey(k, e)}>{k}</button>
       {/each}
     </div>
 
