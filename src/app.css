@@ -81,45 +81,6 @@ body {
     calc(env(safe-area-inset-bottom, 0px) + 104px);
 }
 
-/* Frosted status-bar overlay -- Instagram-style: the frost sits OVER the
-   notch / Dynamic Island, with content visible (blurred + darkened) behind
-   the status-bar text, then melting into the sharp content below.
-
-   This is fixed to the viewport and blurs the natural body scroll behind it
-   (see .view: the document scrolls, so backdrop-filter actually samples it in
-   the installed PWA). Two things were previously wrong: (1) content lived in
-   an inner overflow scroller WebKit wouldn't blur, and (2) the tint started
-   fully opaque (var(--ink-2), alpha 1) over the status bar, painting a hard
-   bar that hid the content behind it. Both are fixed now.
-
-   Fix: keep the tint TRANSLUCENT the whole way down (a dark scrim strong
-   enough to keep white status-bar glyphs legible, but never solid), so the
-   blurred content shows through behind the island. The mask then fades the
-   entire layer -- blur included -- out at the bottom, so the frost dissolves
-   smoothly into the sharp content instead of ending on a hard edge. */
-.status-bar-blur {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: calc(env(safe-area-inset-top, 0px) + 20px);
-  z-index: 100;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    rgba(13, 15, 20, 0.6) 0%,
-    rgba(13, 15, 20, 0.45) 45%,
-    rgba(13, 15, 20, 0.2) 75%,
-    rgba(13, 15, 20, 0) 100%
-  );
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
-  transform: translateZ(0);
-  will-change: transform;
-}
-
 .page { display: none; }
 .page.active { display: block; }
 
