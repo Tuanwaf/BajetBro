@@ -1,17 +1,21 @@
 <script>
-  import { currentView } from './lib/viewStore.js';
+  import { currentView, addOpen, addIntent } from './lib/viewStore.js';
   import TabBar from './lib/components/TabBar.svelte';
   import Toast from './lib/components/Toast.svelte';
   import Home from './routes/Home.svelte';
-  import Hutang from './routes/Hutang.svelte';
+  import Goals from './routes/Goals.svelte';
   import History from './routes/History.svelte';
   import Settings from './routes/Settings.svelte';
   import AddExpenseSheet from './routes/AddExpenseSheet.svelte';
   import EndMonthSheet from './routes/EndMonthSheet.svelte';
 
-  let addSheetOpen = $state(false);
   let endMonthSheetOpen = $state(false);
   let viewEl = $state(null);
+
+  function closeAdd() {
+    addOpen.set(false);
+    addIntent.set(null);
+  }
 
   // Only allow the iOS rubber-band bounce when the page is actually tall
   // enough to scroll. On a short page (e.g. History before expanding a month)
@@ -53,8 +57,8 @@
     <section class="page" class:active={$currentView === 'home'}>
       <Home onEndMonth={() => (endMonthSheetOpen = true)} />
     </section>
-    <section class="page" class:active={$currentView === 'hutang'}>
-      <Hutang />
+    <section class="page" class:active={$currentView === 'goals'}>
+      <Goals />
     </section>
     <section class="page" class:active={$currentView === 'history'}>
       <History />
@@ -66,9 +70,9 @@
 
   <div class="status-bar-blur"></div>
 
-  <TabBar onAddClick={() => (addSheetOpen = true)} />
+  <TabBar onAddClick={() => addOpen.set(true)} />
 
-  <AddExpenseSheet open={addSheetOpen} onClose={() => (addSheetOpen = false)} />
+  <AddExpenseSheet open={$addOpen} intent={$addIntent} onClose={closeAdd} />
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
 
   <Toast />

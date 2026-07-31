@@ -122,3 +122,81 @@ export function computeTabungHajiTotal(tabungHaji, pots, dividends) {
 export function computeDividendsTotal(dividends) {
   return round2((dividends || []).reduce((s, d) => s + d.amount, 0));
 }
+
+// ------------------------------------------------------------------ Goals ----
+// A goal's ledgers are derived, never stored as running totals, so edits and
+// deletes to individual entries always reconcile.
+
+// Money put into a goal so far (reserved for savings goals, given for giving).
+export function goalAllocated(g) {
+  return round2((g.allocations || []).reduce((s, a) => s + (a.amount || 0), 0));
+}
+
+// RM value of one spend: convert at the goal's rate only when it was logged in
+// the goal's own foreign currency; everything else is already RM.
+export function spendRM(g, s) {
+  return round2(g.currency && s.ccy === g.currency ? s.amount * (g.rate || 1) : s.amount);
+}
+
+// Total spent out of a goal (itemized), in RM.
+export function goalSpent(g) {
+  return round2((g.spends || []).reduce((s, x) => s + spendRM(g, x), 0));
+}
+
+// For savings goals: money still sitting in the goal (reserved but not spent).
+export function goalReserveLeft(g) {
+  return round2(goalAllocated(g) - goalSpent(g));
+}
+
+export function goalReached(g) {
+  return goalAllocated(g) >= (g.target || 0);
+}
+
+export function computeTotalSaved(pots) {
+  return round2((pots || []).reduce((s, p) => s + (p.initial || 0), 0));
+}
+
+// Reserve still held inside OPEN savings goals -- physically still in Tabung
+// Haji, just earmarked, so it counts toward TH but not the free pool.
+export function computeOpenSavingsReserve(goals) {
+  return round2(
+    (goals || [])
+      .filter((g) => g.type === 'savings' && !g.closed)
+      .reduce((s, g) => s + Math.max(0, goalReserveLeft(g)), 0)
+  );
+}
+
+// The shared "Ready to allocate" pool: everything you've saved (pot inflows +
+// dividends) minus what's currently tied up or already gone.
+//   pool = totalSaved + dividends
+//          - reserve still held in open savings goals
+//          - everything given to giving goals (that money left)
+//          - everything spent out of savings goals (left)
+//          - personal spends from savings (left)
+export function computeReadyToAllocate(pots, goals, dividends, savingsSpends) {
+  const totalSaved = computeTotalSaved(pots);
+  const totalDiv = computeDividendsTotal(dividends);
+  const openReserve = computeOpenSavingsReserve(goals);
+  const given = (goals || [])
+    .filter((g) => g.type === 'giving')
+    .reduce((s, g) => s + goalAllocated(g), 0);
+  const savingsSpent = (goals || [])
+    .filter((g) => g.type === 'savings')
+    .reduce((s, g) => s + goalSpent(g), 0);
+  const personalSpent = (savingsSpends || []).reduce((s, x) => s + (x.amount || 0), 0);
+  return round2(totalSaved + totalDiv - openReserve - given - savingsSpent - personalSpent);
+}
+
+export function computePersonalSpentTotal(savingsSpends) {
+  return round2((savingsSpends || []).reduce((s, x) => s + (x.amount || 0), 0));
+}
+
+// Tabung Haji total: fixed deposit (locked) + the liquid savings still in TH,
+// which is the free pool plus reserve held in open savings goals. Dividends
+// are already folded into the pool, so they're counted exactly once.
+export function computeTabungHajiTotal2(tabungHaji, pots, goals, dividends, savingsSpends) {
+  const fd = tabungHaji?.fixedDeposit || 0;
+  return round2(
+    fd + computeReadyToAllocate(pots, goals, dividends, savingsSpends) + computeOpenSavingsReserve(goals)
+  );
+}

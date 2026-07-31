@@ -1,6 +1,6 @@
 <script>
-  import { currentMonth, template, hutangPots } from '../lib/stores.js';
-  import { computeSpentTotal, computeTotalRemaining, computeTotalBalance, computeOpenPots, computePersonalSavings, round2 } from '../lib/calc.js';
+  import { currentMonth, template } from '../lib/stores.js';
+  import { computeSpentTotal, computeTotalRemaining, computeTotalBalance, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { MONTH_NAMES } from '../lib/constants.js';
@@ -11,7 +11,6 @@
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
-  let pots = $derived($hutangPots ?? []);
 
   let step = $state(1);
   let bonusOn = $state(false);
@@ -28,8 +27,6 @@
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
   let leftover = $derived(month ? computeTotalRemaining(month) : 0);
   let totalBalance = $derived(month ? computeTotalBalance(month) : null);
-  let openPotsNow = $derived(computeOpenPots(pots));
-  let personalSavings = $derived(computePersonalSavings(pots));
 
   function nextMonthKey(key) {
     const [y, m] = key.split('-').map(Number);
@@ -95,12 +92,6 @@
             <div class="stat"><div class="k">Income</div><div class="v num">{totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}</div></div>
             <div class="stat"><div class="k">Spent</div><div class="v num" style="color:var(--red);">RM {fmt(spentTotal)}</div></div>
             <div class="stat"><div class="k">Left over</div><div class="v num" class:up={leftover >= 0} class:down={leftover < 0}>{leftover >= 0 ? 'RM ' : '-RM '}{fmt(Math.abs(leftover))}</div></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="cat-name-row" style="margin-bottom:0;"><span>Hutang status</span></div>
-          <div class="cat-amt" style="margin-top:4px;">
-            {openPotsNow.length ? `${openPotsNow.length} pot${openPotsNow.length > 1 ? 's' : ''} still open · RM ${fmt(personalSavings)} unallocated` : 'All Hutang pots fully settled'}
           </div>
         </div>
         <button class="save-btn" onclick={() => (step = 2)}>Continue</button>

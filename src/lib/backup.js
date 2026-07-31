@@ -1,15 +1,17 @@
 import db from './db';
+import { migrateV1 } from './migrate.js';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export async function exportBackup() {
-  const [template, months, hutangPots, hutangLedger, tabungHaji, dividends] = await Promise.all([
+  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends] = await Promise.all([
     db.template.get('current'),
     db.months.toArray(),
     db.hutangPots.toArray(),
-    db.hutangLedger.get('master'),
     db.tabungHaji.get('main'),
     db.dividends.toArray(),
+    db.goals.toArray(),
+    db.savingsSpends.toArray(),
   ]);
 
   const payload = {
@@ -18,9 +20,10 @@ export async function exportBackup() {
     template,
     months,
     hutangPots,
-    hutangLedger,
     tabungHaji,
     dividends,
+    goals,
+    savingsSpends,
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -45,8 +48,20 @@ export async function importBackup(file) {
     throw new Error(`Not valid JSON (${err.message})`);
   }
 
-  if (data.schemaVersion !== SCHEMA_VERSION) {
+  if (data.schemaVersion !== 1 && data.schemaVersion !== 2) {
     throw new Error(`Unsupported backup schema version: ${data.schemaVersion}`);
+  }
+
+  // A v1 backup predates Goals -- fold its hutang ledger + pots into the new
+  // goals / savingsSpends shape so old backups restore losslessly.
+  let goals = data.goals || [];
+  let savingsSpends = data.savingsSpends || [];
+  let pots = data.hutangPots || [];
+  if (data.schemaVersion === 1) {
+    const migrated = migrateV1({ hutangPots: pots, hutangLedger: data.hutangLedger });
+    goals = migrated.goals;
+    savingsSpends = migrated.savingsSpends;
+    pots = migrated.hutangPots;
   }
 
   await db.transaction(
@@ -54,9 +69,10 @@ export async function importBackup(file) {
     db.template,
     db.months,
     db.hutangPots,
-    db.hutangLedger,
     db.tabungHaji,
     db.dividends,
+    db.goals,
+    db.savingsSpends,
     db.meta,
     async () => {
       await Promise.all([
@@ -64,16 +80,19 @@ export async function importBackup(file) {
         db.months.clear(),
         db.hutangPots.clear(),
         db.dividends.clear(),
+        db.goals.clear(),
+        db.savingsSpends.clear(),
       ]);
 
       if (data.template) await db.template.put(data.template);
       if (data.months?.length) await db.months.bulkPut(data.months);
-      if (data.hutangPots?.length) await db.hutangPots.bulkPut(data.hutangPots);
-      if (data.hutangLedger) await db.hutangLedger.put(data.hutangLedger);
+      if (pots.length) await db.hutangPots.bulkPut(pots);
       if (data.tabungHaji) await db.tabungHaji.put(data.tabungHaji);
       if (data.dividends?.length) await db.dividends.bulkPut(data.dividends);
+      if (goals.length) await db.goals.bulkPut(goals);
+      if (savingsSpends.length) await db.savingsSpends.bulkAdd(savingsSpends.map(({ id, ...rest }) => rest));
 
-      // A restored backup already has real data — mark seeded so the
+      // A restored backup already has real data -- mark seeded so the
       // historical seed script never overwrites it on a future load.
       await db.meta.put({ key: 'seeded', value: true });
     }

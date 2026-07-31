@@ -1,73 +1,75 @@
 <script>
-  import { currentMonth, template, hutangPots } from '../lib/stores.js';
-  import { computePotRemain, computeOpenPots } from '../lib/calc.js';
+  import { currentMonth, template, hutangPots, goals } from '../lib/stores.js';
+  import { goalAllocated, goalReserveLeft, goalReached } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { ADHOC_COLOR, HUTANG_CHIP_COLOR, ADHOC_LABEL_PRESETS, HUTANG_ENTRY_TYPES } from '../lib/constants.js';
+  import { ADHOC_COLOR, ADHOC_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { currentView } from '../lib/viewStore.js';
 
-  let { open, onClose } = $props();
+  let { open, onClose, intent = null } = $props();
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
   let pots = $derived($hutangPots ?? []);
-  let openPots = $derived(computeOpenPots(pots));
+  let goalList = $derived(($goals ?? []).filter((g) => !g.closed));
 
-  let selectedCatKey = $state(null); // category key, 'adhoc', or 'hutang'
-  let selectedAdhocLabel = $state(null); // preset label, or 'custom'
+  // 'addgoal' = put money into a goal (reserve / give), 'spendgoal' = itemized
+  // spend out of a savings goal, 'spend' = personal spend from the pool.
+  let selectedCatKey = $state(null);
+  let selectedAdhocLabel = $state(null);
   let customAdhocLabel = $state('');
-  let selectedHutangType = $state(null);
-  let selectedHutangMonth = $state(null);
-  let kpCents = $state(0); // amount held as integer cents, keyed in right-to-left like a banking app
+  let selectedGoalId = $state(null);
+  let addCcy = $state('RM');
+  let kpCents = $state(0);
   let noteValue = $state('');
 
-  const MAX_CENTS = 99999999; // RM 999,999.99
-
+  const MAX_CENTS = 99999999;
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
+
+  let selectedGoal = $derived(goalList.find((g) => g.id === selectedGoalId) || null);
+  // Goals eligible for a "spend on a goal" entry: savings goals with reserve left.
+  let spendGoals = $derived(goalList.filter((g) => g.type === 'savings' && goalReserveLeft(g) > 0.005));
+  let amtCur = $derived(selectedCatKey === 'spendgoal' && selectedGoal?.currency ? addCcy : 'RM');
 
   function reset() {
     selectedCatKey = null;
     selectedAdhocLabel = null;
     customAdhocLabel = '';
-    selectedHutangType = null;
-    selectedHutangMonth = null;
+    selectedGoalId = null;
+    addCcy = 'RM';
     kpCents = 0;
     noteValue = '';
   }
 
   $effect(() => {
-    if (open) reset();
+    if (open) {
+      reset();
+      applyIntent(intent);
+    }
   });
 
-  function pressKey(k, ev) {
-    if (k === '⌫') {
-      kpCents = Math.floor(kpCents / 10);
-    } else if (k === '00') {
-      kpCents = Math.min(MAX_CENTS, kpCents * 100);
-    } else {
-      kpCents = Math.min(MAX_CENTS, kpCents * 10 + Number(k));
+  function applyIntent(it) {
+    if (!it) return;
+    selectCat(it.mode);
+    if (it.goalId) {
+      const g = goalList.find((x) => x.id === it.goalId);
+      if (g) selectGoal(g);
     }
+  }
+
+  function pressKey(k, ev) {
+    if (k === '⌫') kpCents = Math.floor(kpCents / 10);
+    else if (k === '00') kpCents = Math.min(MAX_CENTS, kpCents * 100);
+    else kpCents = Math.min(MAX_CENTS, kpCents * 10 + Number(k));
     flashKey(ev?.currentTarget);
   }
 
-  // Drive the keypress feedback as ONE self-contained pulse per tap via the
-  // Web Animations API: it lights gold instantly, holds a beat, then eases
-  // back to rest over a single continuous curve. Cancelling + restarting on
-  // each tap means a rapid re-tap of the same key restarts cleanly from full
-  // gold — no mid-fade flip/flicker like the old class-toggle approach.
   function flashKey(el) {
     if (!el || typeof el.animate !== 'function') return;
     el.__flash?.cancel();
-    // Read the resting styles AFTER cancelling so the end frame lands exactly
-    // on the element's true rest state (numbers vs the ⌫ op key differ), which
-    // avoids a snap when the animation releases its hold on the styles.
     const cs = getComputedStyle(el);
-    const rest = {
-      backgroundColor: cs.backgroundColor,
-      borderColor: cs.borderColor,
-      color: cs.color,
-    };
+    const rest = { backgroundColor: cs.backgroundColor, borderColor: cs.borderColor, color: cs.color };
     const lit = { backgroundColor: '#e7b34e', borderColor: '#e7b34e', color: '#241a05' };
     el.__flash = el.animate(
       [
@@ -83,8 +85,15 @@
     selectedCatKey = key;
     selectedAdhocLabel = null;
     customAdhocLabel = '';
-    selectedHutangType = null;
-    selectedHutangMonth = null;
+    selectedGoalId = null;
+    addCcy = 'RM';
+  }
+
+  function selectGoal(g) {
+    selectedGoalId = g.id;
+    // Default a foreign-currency goal to its own currency (most trip spends
+    // are local); flip to RM for ringgit-priced things like a flight.
+    addCcy = selectedCatKey === 'spendgoal' && g.currency ? g.currency : 'RM';
   }
 
   async function save() {
@@ -93,7 +102,6 @@
       showToast('Pick a category and amount first');
       return;
     }
-
     const note = noteValue.trim();
     const now = new Date().toISOString();
 
@@ -104,64 +112,65 @@
       showToast(`Saved RM ${fmt(amt)} · Ad-hoc / ${label}`);
       onClose();
       currentView.set('home');
-    } else if (selectedCatKey === 'hutang') {
-      if (selectedHutangMonth == null) {
-        showToast("Pick which month's pot first");
-        return;
-      }
-      if (!selectedHutangType) {
-        showToast('Choose Send or Used first');
-        return;
-      }
-      const pot = pots.find((p) => p.month === selectedHutangMonth);
-      const remain = computePotRemain(pot);
-      let applyAmt = amt;
-      let capped = false;
-      if (applyAmt > remain) {
-        applyAmt = remain;
-        capped = true;
-      }
-      const field = selectedHutangType === 'send' ? 'send' : 'used';
-      await db.hutangPots.update(pot.month, { [field]: pot[field] + applyAmt });
-      const dest = selectedHutangType === 'send' ? 'Sent to Mom' : 'Used';
-      showToast(
-        capped
-          ? `Capped to RM ${fmt(applyAmt)} left in ${pot.month} · ${dest}`
-          : `Saved RM ${fmt(applyAmt)} · Hutang / ${dest} (${pot.month})`
-      );
-      onClose();
-      currentView.set('hutang');
-    } else {
-      const categories = month.categories.map((c) =>
-        c.key === selectedCatKey
-          ? {
-              ...c,
-              actual: c.actual + amt,
-              transactions: [...(c.transactions || []), { amount: amt, date: now, note: note || undefined }],
-            }
-          : c
-      );
-      await db.months.update(month.key, { categories });
-
-      // Saving is what actually opens/grows this month's Hutang pot -- the
-      // pot's initial amount reflects what was really set aside (which can
-      // be less than, equal to, or more than the planned Saving amount, e.g.
-      // if extra rolled-over cash is also put toward it), not an assumed
-      // fixed figure created automatically at cycle start.
-      if (selectedCatKey === 'saving') {
-        const existingPot = pots.find((p) => p.month === month.key);
-        if (existingPot) {
-          await db.hutangPots.update(month.key, { initial: existingPot.initial + amt });
-        } else {
-          await db.hutangPots.put({ month: month.key, initial: amt, used: 0, send: 0 });
-        }
-      }
-
-      const cat = tmpl.categories.find((c) => c.key === selectedCatKey);
-      showToast(`Saved RM ${fmt(amt)} · ${cat?.name ?? ''}`);
-      onClose();
-      currentView.set('home');
+      return;
     }
+
+    if (selectedCatKey === 'addgoal') {
+      if (!selectedGoal) return showToast('Pick a goal first');
+      const room = Math.max(0, selectedGoal.target - goalAllocated(selectedGoal));
+      const applied = Math.min(amt, room);
+      if (applied <= 0) return showToast('This goal is already at its target');
+      const allocations = [...(selectedGoal.allocations || []), { date: now, amount: applied }];
+      await db.goals.update(selectedGoal.id, { allocations });
+      const verb = selectedGoal.type === 'giving' ? 'Added to' : 'Reserved for';
+      showToast(`${verb} ${selectedGoal.label} · RM ${fmt(applied)}${applied < amt ? ' (capped to target)' : ''}`);
+      onClose();
+      currentView.set('goals');
+      return;
+    }
+
+    if (selectedCatKey === 'spendgoal') {
+      if (!selectedGoal) return showToast('Pick a goal first');
+      const spends = [...(selectedGoal.spends || []), { date: now, label: note || 'Spend', amount: amt, ccy: addCcy }];
+      await db.goals.update(selectedGoal.id, { spends });
+      showToast(`Spent ${amtCur} ${fmt(amt)} · ${selectedGoal.label}`);
+      onClose();
+      currentView.set('goals');
+      return;
+    }
+
+    if (selectedCatKey === 'spend') {
+      await db.savingsSpends.add({ date: now, label: note || 'Personal spend', amount: amt });
+      showToast(`Spent RM ${fmt(amt)} from savings`);
+      onClose();
+      currentView.set('goals');
+      return;
+    }
+
+    // A fixed category expense.
+    const categories = month.categories.map((c) =>
+      c.key === selectedCatKey
+        ? {
+            ...c,
+            actual: c.actual + amt,
+            transactions: [...(c.transactions || []), { amount: amt, date: now, note: note || undefined }],
+          }
+        : c
+    );
+    await db.months.update(month.key, { categories });
+
+    // Saving is what actually feeds the shared pool: it opens/grows this
+    // month's pot (its `initial`), which flows into "Ready to allocate".
+    if (selectedCatKey === 'saving') {
+      const existingPot = pots.find((p) => p.month === month.key);
+      if (existingPot) await db.hutangPots.update(month.key, { initial: existingPot.initial + amt });
+      else await db.hutangPots.put({ month: month.key, initial: amt });
+    }
+
+    const cat = tmpl.categories.find((c) => c.key === selectedCatKey);
+    showToast(`Saved RM ${fmt(amt)} · ${cat?.name ?? ''}`);
+    onClose();
+    currentView.set('home');
   }
 </script>
 
@@ -170,11 +179,11 @@
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
-    <h2>Add expense</h2>
+    <h2>Add entry</h2>
     <span style="width:38px;"></span>
   </div>
   <div class="sheet-body">
-    <div class="amt-display"><span class="cur">RM</span><span class="val">{kpDisplay}</span></div>
+    <div class="amt-display"><span class="cur">{amtCur}</span><span class="val">{kpDisplay}</span></div>
 
     <div class="field-lbl">Category</div>
     <div class="chip-grid">
@@ -188,8 +197,14 @@
       <button class="chip" class:selected={selectedCatKey === 'adhoc'} style="color:{ADHOC_COLOR}" onclick={() => selectCat('adhoc')}>
         <span class="dot" style="background:{ADHOC_COLOR}"></span>Ad-hoc
       </button>
-      <button class="chip" class:selected={selectedCatKey === 'hutang'} style="color:{HUTANG_CHIP_COLOR}" onclick={() => selectCat('hutang')}>
-        <span class="dot" style="background:{HUTANG_CHIP_COLOR}"></span>Hutang (Mom)
+      <button class="chip" class:selected={selectedCatKey === 'addgoal'} style="color:#b07af2" onclick={() => selectCat('addgoal')}>
+        <span class="dot" style="background:#b07af2"></span>Add to a goal
+      </button>
+      <button class="chip" class:selected={selectedCatKey === 'spendgoal'} style="color:#3ddcb0" onclick={() => selectCat('spendgoal')}>
+        <span class="dot" style="background:#3ddcb0"></span>Spend on a goal
+      </button>
+      <button class="chip" class:selected={selectedCatKey === 'spend'} style="color:#f2a154" onclick={() => selectCat('spend')}>
+        <span class="dot" style="background:#f2a154"></span>Spend from savings
       </button>
     </div>
 
@@ -197,53 +212,50 @@
       <div class="field-lbl">Ad-hoc label</div>
       <div class="chip-grid">
         {#each ADHOC_LABEL_PRESETS as label}
-          <button
-            class="chip ghost"
-            class:selected={selectedAdhocLabel === label}
-            style={selectedAdhocLabel === label ? `color:${ADHOC_COLOR}` : ''}
-            onclick={() => (selectedAdhocLabel = label)}
-          >{label}</button>
+          <button class="chip ghost" class:selected={selectedAdhocLabel === label} style={selectedAdhocLabel === label ? `color:${ADHOC_COLOR}` : ''} onclick={() => (selectedAdhocLabel = label)}>{label}</button>
         {/each}
-        <button
-          class="chip ghost"
-          class:selected={selectedAdhocLabel === 'custom'}
-          style={selectedAdhocLabel === 'custom' ? `color:${ADHOC_COLOR}` : ''}
-          onclick={() => (selectedAdhocLabel = 'custom')}
-        >+ Custom</button>
+        <button class="chip ghost" class:selected={selectedAdhocLabel === 'custom'} style={selectedAdhocLabel === 'custom' ? `color:${ADHOC_COLOR}` : ''} onclick={() => (selectedAdhocLabel = 'custom')}>+ Custom</button>
       </div>
       {#if selectedAdhocLabel === 'custom'}
         <input class="note-input" placeholder="Type your own label…" bind:value={customAdhocLabel} />
       {/if}
     {/if}
 
-    {#if selectedCatKey === 'hutang'}
-      <div class="field-lbl">Which month's pot?</div>
+    {#if selectedCatKey === 'addgoal' || selectedCatKey === 'spendgoal'}
+      <div class="field-lbl">{selectedCatKey === 'spendgoal' ? 'Spend from which goal?' : 'Which goal?'}</div>
       <div class="chip-grid">
-        {#if openPots.length}
-          {#each openPots as pot (pot.month)}
-            <button
-              class="chip ghost"
-              class:selected={selectedHutangMonth === pot.month}
-              style={selectedHutangMonth === pot.month ? 'color:var(--h-remain)' : ''}
-              onclick={() => (selectedHutangMonth = pot.month)}
-            >{pot.month} · RM {fmt(computePotRemain(pot))} left</button>
-          {/each}
+        {#each (selectedCatKey === 'spendgoal' ? spendGoals : goalList) as g (g.id)}
+          <button class="chip ghost" class:selected={selectedGoalId === g.id} style={selectedGoalId === g.id ? `color:${g.color}` : ''} onclick={() => selectGoal(g)}>
+            <span class="dot" style="background:{g.color}"></span>{g.label}
+          </button>
         {:else}
-          <p class="hint" style="margin:0 0 6px;">No open pots yet — start a month first.</p>
-        {/if}
-      </div>
-      <div class="field-lbl">Where did it go?</div>
-      <div class="chip-grid">
-        {#each HUTANG_ENTRY_TYPES as opt (opt.type)}
-          <button
-            class="chip ghost"
-            class:selected={selectedHutangType === opt.type}
-            style={selectedHutangType === opt.type ? `color:${opt.color}` : ''}
-            onclick={() => (selectedHutangType = opt.type)}
-          >{opt.label}</button>
+          <p class="hint" style="margin:0 0 6px;">
+            {selectedCatKey === 'spendgoal' ? 'No goals with money set aside yet.' : 'No goals yet — create one on the Goals tab.'}
+          </p>
         {/each}
       </div>
-      <p class="hint">This tracks money already set aside in a Saving pot — it won't change this month's remaining balance.</p>
+
+      {#if selectedCatKey === 'addgoal' && selectedGoal}
+        <p class="hint">
+          {#if selectedGoal.type === 'giving'}Goes toward {selectedGoal.label} — leaves your savings for good.
+          {:else}Reserved in Tabung Haji for {selectedGoal.label} — still yours and still growing until you spend it.{/if}
+        </p>
+      {/if}
+
+      {#if selectedCatKey === 'spendgoal' && selectedGoal}
+        {#if selectedGoal.currency}
+          <div class="field-lbl">Amount currency</div>
+          <div class="chip-grid">
+            <button class="chip ghost" class:selected={addCcy === 'RM'} style={addCcy === 'RM' ? 'color:#3ddcb0' : ''} onclick={() => (addCcy = 'RM')}>RM</button>
+            <button class="chip ghost" class:selected={addCcy === selectedGoal.currency} style={addCcy === selectedGoal.currency ? 'color:#3ddcb0' : ''} onclick={() => (addCcy = selectedGoal.currency)}>{selectedGoal.currency} (RM{fmt(selectedGoal.rate)}/1)</button>
+          </div>
+        {/if}
+        <p class="hint">Comes out of money set aside for {selectedGoal.label} — it won't touch this month's budget or History.</p>
+      {/if}
+    {/if}
+
+    {#if selectedCatKey === 'spend'}
+      <p class="hint">Takes money out of your savings pool for a personal purchase — not tied to any goal, and reduces what's available to allocate.</p>
     {/if}
 
     <div class="field-lbl">Note (optional)</div>
@@ -256,6 +268,6 @@
       {/each}
     </div>
 
-    <button class="save-btn" onclick={save}>Save expense</button>
+    <button class="save-btn" onclick={save}>Save</button>
   </div>
 </div>

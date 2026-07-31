@@ -1,12 +1,9 @@
 export const ADHOC_COLOR = '#f2555a';
-export const HUTANG_CHIP_COLOR = '#f2557a';
 
 export const ADHOC_LABEL_PRESETS = ['BNPL', 'Zakat', 'Emergency', 'Misc'];
 
-export const HUTANG_ENTRY_TYPES = [
-  { type: 'send', label: 'Send to Mom', color: 'var(--h-send)' },
-  { type: 'used', label: 'Keep (Used)', color: 'var(--h-used)' },
-];
+// Palette offered when creating / editing a goal.
+export const GOAL_COLORS = ['#f2557a', '#6e8bff', '#3ddc97', '#f2994a', '#c084f5', '#38c6d9', '#e7b34e'];
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',

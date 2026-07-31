@@ -1,12 +1,12 @@
 <script>
-  import { currentMonth, template, hutangPots, tabungHaji, dividends } from '../lib/stores.js';
+  import { currentMonth, template, hutangPots, tabungHaji, dividends, goals, savingsSpends } from '../lib/stores.js';
   import {
     computeAdhocPlanned,
     computeAdhocActual,
     computeSpentTotal,
     computeTotalRemaining,
     computeTotalBalance,
-    computeTabungHajiTotal,
+    computeTabungHajiTotal2,
     computePlannedTotal,
     round2,
   } from '../lib/calc.js';
@@ -23,6 +23,8 @@
   let pots = $derived($hutangPots ?? []);
   let th = $derived($tabungHaji);
   let divs = $derived($dividends ?? []);
+  let goalList = $derived($goals ?? []);
+  let sSpends = $derived($savingsSpends ?? []);
 
   let year = $derived(month ? month.key.split('-')[0] : '');
   let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
@@ -31,7 +33,7 @@
   let totalRemaining = $derived(month ? computeTotalRemaining(month) : 0);
   let totalBalance = $derived(month ? computeTotalBalance(month) : null);
   let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
-  let tabungHajiTotal = $derived(th ? computeTabungHajiTotal(th, pots, divs) : 0);
+  let tabungHajiTotal = $derived(th ? computeTabungHajiTotal2(th, pots, goalList, divs, sSpends) : 0);
 
   let adhocOpen = $state(false);
   let adhocInfo = $derived(rowInfo({ actual: adhocActual, planned: adhocPlanned }));
@@ -91,7 +93,7 @@
     </div>
   </div>
 
-  <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => currentView.set('hutang')} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && currentView.set('hutang')}>
+  <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => currentView.set('goals')} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>
     <div>
       <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Tabung Haji</div>
       <div class="num" style="font-size:19px; font-weight:700; margin-top:2px;">RM {fmt(tabungHajiTotal)}</div>
@@ -121,7 +123,7 @@
               Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Ad-hoc` : `RM ${fmt(Math.abs(leftover))} pulled from Ad-hoc`}
             </span>
           {:else if cat.key === 'saving'}
-            <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('hutang'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('hutang')}>Feeds your Hutang pot &rarr;</span>
+            <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('goals'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>Feeds your Goals pool &rarr;</span>
           {:else}
             <span class="cat-note" class:over={info.over} class:under={!info.over}>
               {info.over ? `Over by RM ${fmt(cat.actual - cat.planned)}` : `RM ${fmt(cat.planned - cat.actual)} left`}

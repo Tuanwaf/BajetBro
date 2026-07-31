@@ -34,3 +34,10 @@ export const dividends = fromLiveQuery(
   () => db.dividends.orderBy('date').reverse().toArray(),
   []
 );
+
+export const goals = fromLiveQuery(() => db.goals.orderBy('order').toArray(), []);
+
+export const savingsSpends = fromLiveQuery(
+  () => db.savingsSpends.orderBy('date').reverse().toArray(),
+  []
+);

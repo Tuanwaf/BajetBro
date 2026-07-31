@@ -5,7 +5,7 @@
 
   const tabs = [
     { id: 'home', label: 'Home' },
-    { id: 'hutang', label: 'Hutang' },
+    { id: 'goals', label: 'Goals' },
   ];
   const tabs2 = [
     { id: 'history', label: 'History' },
@@ -19,7 +19,7 @@
       {#if t.id === 'home'}
         <svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 4l8 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9h12v-9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       {:else}
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 19s-6.5-4.35-6.5-9A3.8 3.8 0 0 1 12 7.8 3.8 3.8 0 0 1 18.5 10c0 4.65-6.5 9-6.5 9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.4" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/></svg>
       {/if}
       {t.label}
     </button>

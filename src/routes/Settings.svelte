@@ -47,6 +47,44 @@
     }
   }
 
+  // Renaming is safe even for Saving: the pool/Goals link is keyed on `key`
+  // ('saving'), never the display name, so the label can be anything.
+  async function renameCategory(index, e) {
+    const value = e.target.value.trim();
+    if (!value) {
+      e.target.value = tmpl.categories[index].name;
+      return;
+    }
+    const key = tmpl.categories[index].key;
+    const updatedTemplate = tmpl.categories.map((c, i) => (i === index ? { ...c, name: value } : c));
+    await db.template.put({ ...tmpl, categories: updatedTemplate });
+    if (month) {
+      const updatedMonth = month.categories.map((c) => (c.key === key ? { ...c, name: value } : c));
+      await db.months.update(month.key, { categories: updatedMonth });
+    }
+  }
+
+  // Deleting removes the category from the template and the current open month
+  // (closed months keep their frozen copy). Saving is protected -- it feeds the
+  // Goals pool and the savings flow, so it can never be deleted.
+  let confirmDeleteKey = $state(null);
+  async function deleteCategory(index) {
+    const cat = tmpl.categories[index];
+    if (cat.key === 'saving') {
+      showToast("Saving feeds your Goals — it can't be deleted");
+      confirmDeleteKey = null;
+      return;
+    }
+    const updatedTemplate = tmpl.categories.filter((_, i) => i !== index);
+    await db.template.put({ ...tmpl, categories: updatedTemplate });
+    if (month) {
+      const updatedMonth = month.categories.filter((c) => c.key !== cat.key);
+      await db.months.update(month.key, { categories: updatedMonth });
+    }
+    confirmDeleteKey = null;
+    showToast(`Removed ${cat.name}`);
+  }
+
   function handlePickFile(e) {
     const file = e.target.files[0];
     e.target.value = '';
@@ -106,18 +144,35 @@
 {/if}
 
 {#if tmpl}
-  <div class="section-hd"><h3>Fixed categories</h3><span>{tmpl.categories.length} active</span></div>
+  <div class="section-hd"><h3>Fixed categories</h3><span>tap a name to rename</span></div>
   <div class="card">
     {#each tmpl.categories as cat, i (cat.key)}
       <div class="set-row">
         <span class="dot" style="background:{cat.color}"></span>
-        <span class="lbl2">{cat.name}</span>
+        <input class="cat-name-input" value={cat.name} onchange={(e) => renameCategory(i, e)} />
         <input class="set-amt" value={cat.planned.toFixed(2)} onchange={(e) => updateCategoryPlanned(i, e)} />
+        {#if cat.key === 'saving'}
+          <span class="cat-lock" title="Feeds your Goals pool — protected">
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </span>
+        {:else}
+          <button class="cat-del" aria-label="Delete category" onclick={() => (confirmDeleteKey = cat.key)}>
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        {/if}
       </div>
+      {#if confirmDeleteKey === cat.key}
+        <div class="del-confirm">
+          <span>Remove "{cat.name}" and its entries this month?</span>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteKey = null)}>Cancel</button>
+            <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteCategory(i)}>Remove</button>
+          </div>
+        </div>
+      {/if}
     {/each}
   </div>
-  <p class="hint" style="margin-left:4px;">Saving feeds your Hutang pot — change it here and it applies from next month.</p>
-  <button class="add-cat-btn">+ Add fixed category</button>
+  <p class="hint" style="margin-left:4px;">Saving feeds your Goals pool (it's protected from deletion) — change it here and it applies from next month.</p>
 
   <div class="section-hd"><h3>Ad-hoc</h3><span>auto-computed</span></div>
   <div class="card">
@@ -141,7 +196,7 @@
     Import backup
     <input type="file" accept=".json,application/json" onchange={handlePickFile} disabled={importing} style="display:none" />
   </label>
-  <p class="hint">Everything — commitments, this cycle, Hutang pots, dividends — bundles into one file. Import it on your next device to pick up exactly where you left off.</p>
+  <p class="hint">Everything — commitments, this cycle, goals, dividends — bundles into one file. Import it on your next device to pick up exactly where you left off.</p>
 </div>
 
 {#if pendingImportFile}
@@ -154,3 +209,40 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .cat-name-input {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    color: var(--hi);
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 2px 0;
+  }
+  .cat-name-input:focus {
+    outline: none;
+    border-bottom-color: var(--stroke-2);
+  }
+  .cat-del,
+  .cat-lock {
+    background: none;
+    border: none;
+    padding: 4px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+  }
+  .cat-del { color: var(--dim); }
+  .cat-lock { color: var(--gold); }
+  .del-confirm {
+    padding: 12px 6px 6px;
+    font-size: 12.5px;
+    color: var(--lo);
+    border-bottom: 1px solid var(--stroke);
+  }
+  .save-btn.danger { background: var(--red); color: #2a0709; }
+</style>
