@@ -147,6 +147,15 @@
       return;
     }
 
+    if (selectedCatKey === 'reimburse') {
+      const reimbursements = [...(month.reimbursements || []), { amount: amt, date: now, note: note || undefined }];
+      await db.months.update(month.key, { reimbursements });
+      showToast(`Paid back to you · RM ${fmt(amt)}`);
+      onClose();
+      currentView.set('home');
+      return;
+    }
+
     // A fixed category expense.
     const categories = month.categories.map((c) =>
       c.key === selectedCatKey
@@ -206,7 +215,14 @@
       <button class="chip" class:selected={selectedCatKey === 'spend'} style="color:#f2a154" onclick={() => selectCat('spend')}>
         <span class="dot" style="background:#f2a154"></span>Spend from savings
       </button>
+      <button class="chip" class:selected={selectedCatKey === 'reimburse'} style="color:#4ade80" onclick={() => selectCat('reimburse')}>
+        <span class="dot" style="background:#4ade80"></span>Paid back to me
+      </button>
     </div>
+
+    {#if selectedCatKey === 'reimburse'}
+      <p class="hint">Money someone paid you back — credited to <b>this month's</b> Remaining, kept separate from your income. Use this when the payback arrives in a later month than the expense (for a same-month bill split, edit the expense instead).</p>
+    {/if}
 
     {#if selectedCatKey === 'adhoc'}
       <div class="field-lbl">Ad-hoc label</div>

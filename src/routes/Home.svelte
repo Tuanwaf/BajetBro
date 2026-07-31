@@ -8,6 +8,7 @@
     computeTotalBalance,
     computeTabungHajiTotal2,
     computePlannedTotal,
+    computeReimbursedTotal,
     round2,
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
@@ -16,6 +17,7 @@
   import db from '../lib/db.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
   import AdhocDetailSheet from './AdhocDetailSheet.svelte';
+  import ReimbursementsSheet from './ReimbursementsSheet.svelte';
 
   let { onEndMonth } = $props();
 
@@ -35,6 +37,8 @@
   let totalBalance = $derived(month ? computeTotalBalance(month) : null);
   let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
   let tabungHajiTotal = $derived(th ? computeTabungHajiTotal2(th, pots, goalList, divs, sSpends) : 0);
+  let reimbursedTotal = $derived(month ? computeReimbursedTotal(month) : 0);
+  let reimburseOpen = $state(false);
 
   let adhocOpen = $state(false);
   let adhocLabel = $state(null);
@@ -101,6 +105,13 @@
       </div>
     </div>
   </div>
+
+  {#if reimbursedTotal > 0}
+    <button class="paidback-row" onclick={() => (reimburseOpen = true)}>
+      <span>Paid back to you</span>
+      <span class="pb-meta">+RM {fmt(reimbursedTotal)}<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </button>
+  {/if}
 
   <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => currentView.set('goals')} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>
     <div>
@@ -183,6 +194,7 @@
 
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
 <AdhocDetailSheet open={adhocLabel != null} label={adhocLabel} onClose={() => (adhocLabel = null)} />
+<ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
 
 <style>
   .lock-btn {
@@ -210,5 +222,29 @@
   }
   .item-link span {
     color: var(--gold);
+  }
+  .paidback-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid rgba(74, 222, 128, 0.4);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    color: var(--hi);
+    font-size: 14px;
+    font-weight: 700;
+    font-family: var(--body);
+  }
+  .paidback-row .pb-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--good);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
   }
 </style>

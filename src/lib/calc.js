@@ -79,14 +79,22 @@ export function computeTotalBalance(month) {
   return round2(month.startingBalance + (month.bonus || 0) + (month.additionalIncome || 0));
 }
 
+// Reimbursements ("paid back to me") credited to THIS month -- money others
+// owed you that arrived now (e.g. a friend settling a bill from a past month).
+// Kept entirely separate from Income/Salary; it just adds to what you have.
+export function computeReimbursedTotal(month) {
+  return round2((month.reimbursements || []).reduce((s, r) => s + (r.amount || 0), 0));
+}
+
 // True cash-on-hand and the figure that rolls forward into next month's
-// Income balance.
+// Income balance. Reimbursements received this month add to it.
 export function computeTotalRemaining(month) {
+  const reimbursed = computeReimbursedTotal(month);
   const totalBalance = computeTotalBalance(month);
   if (totalBalance != null) {
-    return round2(totalBalance - computeSpentTotal(month));
+    return round2(totalBalance + reimbursed - computeSpentTotal(month));
   }
-  return computeRemaining(month);
+  return round2(computeRemaining(month) + reimbursed);
 }
 
 export function computePotRemain(pot) {

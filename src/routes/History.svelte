@@ -46,6 +46,7 @@
       spend: m.recordedTotal,
       categories: m.categories,
       extras: m.extras,
+      reimbursements: m.reimbursements || [],
       current: false,
     }));
     if (month) {
@@ -59,6 +60,7 @@
         spend: computeSpentTotal(month),
         categories: month.categories,
         extras: month.extras,
+        reimbursements: month.reimbursements || [],
         current: true,
       });
     }
@@ -71,11 +73,13 @@
       const primaryValue = hasBalance
         ? r.startingBalance + r.bonus + r.additionalIncome
         : r.salary + r.bonus + r.additionalIncome;
+      const reimbursed = (r.reimbursements || []).reduce((s, x) => s + (x.amount || 0), 0);
       return {
         ...r,
         primaryLabel: hasBalance ? 'Income' : 'Salary',
         primaryValue,
-        delta: primaryValue - r.spend,
+        reimbursed,
+        delta: primaryValue + reimbursed - r.spend,
       };
     });
   });
@@ -125,6 +129,9 @@
         <span>Salary <b class="num">RM {fmt(m.salary)}</b>{#if m.bonus > 0}<b class="num" style="color:var(--good);"> +{fmt(m.bonus)}</b>{/if}</span>
         {#if m.startingBalance != null}
           <span>Income <b class="num">RM {fmt(m.primaryValue)}</b>{#if m.additionalIncome > 0}<b class="num" style="color:var(--good);"> +{fmt(m.additionalIncome)}</b>{/if}</span>
+        {/if}
+        {#if m.reimbursed > 0}
+          <span>Paid back <b class="num" style="color:var(--good);">+RM {fmt(m.reimbursed)}</b></span>
         {/if}
       </div>
       {#each m.categories as cat (cat.key)}

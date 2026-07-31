@@ -1,0 +1,106 @@
+<script>
+  import { currentMonth } from '../lib/stores.js';
+  import { computeReimbursedTotal } from '../lib/calc.js';
+  import { fmt } from '../lib/format.js';
+  import { showToast } from '../lib/toast.js';
+  import db from '../lib/db.js';
+
+  let { open, onClose } = $props();
+
+  let month = $derived($currentMonth);
+  let list = $derived.by(() => {
+    const r = month?.reimbursements || [];
+    return r.map((e, idx) => ({ e, idx })).sort((a, b) => new Date(b.e.date || 0) - new Date(a.e.date || 0));
+  });
+  let total = $derived(month ? computeReimbursedTotal(month) : 0);
+
+  let editingIdx = $state(null);
+  let editAmt = $state('');
+  let editNote = $state('');
+
+  function startEdit(x) {
+    editingIdx = x.idx;
+    editAmt = String(x.e.amount);
+    editNote = x.e.note || '';
+  }
+  async function saveEdit() {
+    const amt = parseFloat(editAmt);
+    if (!amt) return showToast('Enter an amount first');
+    const reimbursements = month.reimbursements.map((r, i) => (i === editingIdx ? { ...r, amount: amt, note: editNote.trim() || undefined } : r));
+    await db.months.update(month.key, { reimbursements });
+    editingIdx = null;
+  }
+  async function deleteEntry(x) {
+    const reimbursements = month.reimbursements.filter((_, i) => i !== x.idx);
+    await db.months.update(month.key, { reimbursements });
+    showToast('Removed');
+    if (!reimbursements.length) onClose();
+  }
+
+  function formatDate(iso) {
+    if (!iso) return 'No date';
+    const d = new Date(iso);
+    return isNaN(d) ? 'No date' : d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+</script>
+
+<div class="sheet" class:open>
+  <div class="sheet-hd">
+    <button class="icon-btn" aria-label="Close" onclick={onClose}>
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <h2>Paid back to you</h2>
+    <span style="width:38px;"></span>
+  </div>
+  <div class="sheet-body">
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:var(--good);">
+      <span style="font-size:13px; color:var(--lo); font-weight:600;">Total credited this month</span>
+      <span class="num" style="font-size:18px; font-weight:700; color:var(--good);">RM {fmt(total)}</span>
+    </div>
+    <div class="field-lbl" style="margin-top:0;">Entries · tap ✎ to fix</div>
+    <div class="card">
+      {#each list as x (x.idx)}
+        {#if editingIdx === x.idx}
+          <div class="tx-edit">
+            <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
+            <input class="note-input" bind:value={editNote} placeholder="Note (e.g. July makan – Ali)" />
+            <div style="display:flex; gap:8px;">
+              <button class="io-btn" style="flex:1;" onclick={() => (editingIdx = null)}>Cancel</button>
+              <button class="save-btn" style="flex:1; margin-top:0;" onclick={saveEdit}>Save</button>
+            </div>
+          </div>
+        {:else}
+          <div class="tx-row">
+            <div>
+              <div class="tx-note-main">{x.e.note || 'Paid back'}</div>
+              <div class="tx-date">{formatDate(x.e.date)}</div>
+            </div>
+            <span class="num tx-amt">+RM {fmt(x.e.amount)}</span>
+            <button class="icon-btn small" aria-label="Edit" onclick={() => startEdit(x)}>
+              <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-btn small" aria-label="Delete" onclick={() => deleteEntry(x)}>
+              <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        {/if}
+      {:else}
+        <p class="hint" style="margin:2px 0;">Nothing paid back this month.</p>
+      {/each}
+    </div>
+    <p class="hint">These credit this month's Remaining and roll forward like any leftover — separate from your Income and Salary.</p>
+  </div>
+</div>
+
+<style>
+  .tx-row { display: flex; align-items: center; gap: 8px; padding: 10px 4px; border-bottom: 1px solid var(--stroke); }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-row > div:first-child { flex: 1; min-width: 0; }
+  .tx-note-main { font-size: 13.5px; font-weight: 600; color: var(--hi); }
+  .tx-date { font-size: 11px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }
+  .tx-amt { font-weight: 600; color: var(--good); }
+  .icon-btn.small { width: 28px; height: 28px; }
+  .icon-btn.small + .icon-btn.small { margin-left: 6px; }
+  .tx-edit { padding: 10px 0; border-bottom: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 8px; }
+  .tx-edit:last-child { border-bottom: none; }
+</style>
