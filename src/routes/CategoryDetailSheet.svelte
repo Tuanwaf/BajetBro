@@ -16,19 +16,22 @@
     return [...list].sort((a, b) => new Date(b.date) - new Date(a.date));
   });
 
-  let editingTx = $state(null); // the transaction object being edited
+  // Track the row being edited by its index in the sorted list. (Storing the
+  // tx object itself fails: Svelte 5 wraps a $state object in a reactive proxy,
+  // so `editingTx === tx` is never true against the raw array element.)
+  let editingIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
   let editDest = $state(null); // destination category key
 
-  function startEdit(tx) {
-    editingTx = tx;
+  function startEdit(i, tx) {
+    editingIdx = i;
     editAmt = String(tx.amount);
     editNote = tx.note || '';
     editDest = category.key;
   }
   function cancelEdit() {
-    editingTx = null;
+    editingIdx = null;
   }
 
   async function writeCategories(newCats) {
@@ -97,7 +100,7 @@
       const destName = tmpl?.categories.find((c) => c.key === destKey)?.name ?? '';
       showToast(`Moved to ${destName}`);
     }
-    editingTx = null;
+    editingIdx = null;
   }
 
   function formatDate(iso) {
@@ -132,7 +135,7 @@
       {#if transactions.length}
         <div class="card">
           {#each transactions as tx, i (i)}
-            {#if editingTx === tx}
+            {#if editingIdx === i}
               <div class="tx-edit">
                 <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
                 <input class="note-input" bind:value={editNote} placeholder="Note (optional)" />
@@ -156,7 +159,7 @@
                   {#if tx.note}<div class="tx-note">{tx.note}</div>{/if}
                 </div>
                 <span class="num tx-amt">RM {fmt(tx.amount)}</span>
-                <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(tx)}>
+                <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(i, tx)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
                 </button>
                 <button class="icon-btn small" aria-label="Delete entry" onclick={() => deleteTx(tx)}>

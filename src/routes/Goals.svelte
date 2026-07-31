@@ -617,6 +617,7 @@
   .dividend-row:last-child { border-bottom: none; }
   .dividend-label { flex: 1; font-size: 13px; color: var(--hi); }
   .icon-btn.small { width: 28px; height: 28px; }
+  .icon-btn.small + .icon-btn.small { margin-left: 6px; }
   .dividend-edit { padding: 8px 0; border-bottom: 1px solid var(--stroke); }
   .dividend-edit .note-input { margin-bottom: 8px; }
 </style>
