@@ -32,6 +32,7 @@
   let thTotal = $derived(computeTabungHajiTotal2(th, pots, goalList, divs, spends));
   let thSavings = $derived(round2(pool + openReserve));
   let dividendsTotal = $derived(computeDividendsTotal(divs));
+  let personalSpentTotal = $derived(spends.reduce((s, x) => s + (x.amount || 0), 0));
 
   // ---------- panels ----------
   let detailGoalId = $state(null);
@@ -538,6 +539,10 @@
   </div>
   <div class="sheet-body">
     <p class="sub" style="margin-top:4px;">Money pulled from your savings pool for personal buys — logged when you choose "Spend from savings". Edit or remove if something's off.</p>
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <span style="font-size:13px; color:var(--lo); font-weight:600;">Total spent from savings</span>
+      <span class="num" style="font-size:18px; font-weight:700;">RM {fmt(personalSpentTotal)}</span>
+    </div>
     <div class="card">
       {#each spends as s (s.id)}
         {#if editingSpendId === s.id}
