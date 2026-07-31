@@ -23,12 +23,17 @@
   let editAmt = $state('');
   let editNote = $state('');
   let editDest = $state(null); // destination category key
+  let editPaid = $state(''); // amount paid back to you (reimbursement)
+
+  // Net cost of a tx = what you actually bore = full paid - paid back to you.
+  const txNet = (tx) => round2((tx.amount || 0) - (tx.reimbursed || 0));
 
   function startEdit(i, tx) {
     editingIdx = i;
     editAmt = String(tx.amount);
     editNote = tx.note || '';
     editDest = category.key;
+    editPaid = tx.reimbursed ? String(tx.reimbursed) : '';
   }
   function cancelEdit() {
     editingIdx = null;
@@ -56,11 +61,11 @@
     const key = category.key;
     const cats = month.categories.map((c) =>
       c.key === key
-        ? { ...c, actual: round2(c.actual - tx.amount), transactions: (c.transactions || []).filter((t) => t !== tx) }
+        ? { ...c, actual: round2(c.actual - txNet(tx)), transactions: (c.transactions || []).filter((t) => t !== tx) }
         : c
     );
     await writeCategories(cats);
-    if (key === 'saving') await adjustPot(-tx.amount);
+    if (key === 'saving') await adjustPot(-txNet(tx));
     showToast('Entry deleted');
   }
 
@@ -68,35 +73,38 @@
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
     const note = editNote.trim();
+    const paid = Math.min(Math.max(parseFloat(editPaid) || 0, 0), amt); // 0..full
     const srcKey = category.key;
     const destKey = editDest;
+    const oldNet = txNet(tx);
+    const newNet = round2(amt - paid);
+    const newTxFields = { amount: amt, date: tx.date, note: note || undefined, reimbursed: paid || undefined };
 
     if (destKey === srcKey) {
-      const delta = round2(amt - tx.amount);
+      const delta = round2(newNet - oldNet);
       const cats = month.categories.map((c) =>
         c.key === srcKey
           ? {
               ...c,
               actual: round2(c.actual + delta),
-              transactions: (c.transactions || []).map((t) => (t === tx ? { ...t, amount: amt, note: note || undefined } : t)),
+              transactions: (c.transactions || []).map((t) => (t === tx ? { ...t, ...newTxFields } : t)),
             }
           : c
       );
       await writeCategories(cats);
       if (srcKey === 'saving') await adjustPot(delta);
     } else {
-      const newTx = { amount: amt, date: tx.date, note: note || undefined };
       let cats = month.categories.map((c) =>
         c.key === srcKey
-          ? { ...c, actual: round2(c.actual - tx.amount), transactions: (c.transactions || []).filter((t) => t !== tx) }
+          ? { ...c, actual: round2(c.actual - oldNet), transactions: (c.transactions || []).filter((t) => t !== tx) }
           : c
       );
       cats = cats.map((c) =>
-        c.key === destKey ? { ...c, actual: round2(c.actual + amt), transactions: [...(c.transactions || []), newTx] } : c
+        c.key === destKey ? { ...c, actual: round2(c.actual + newNet), transactions: [...(c.transactions || []), newTxFields] } : c
       );
       await writeCategories(cats);
-      if (srcKey === 'saving') await adjustPot(-tx.amount);
-      if (destKey === 'saving') await adjustPot(amt);
+      if (srcKey === 'saving') await adjustPot(-oldNet);
+      if (destKey === 'saving') await adjustPot(newNet);
       const destName = tmpl?.categories.find((c) => c.key === destKey)?.name ?? '';
       showToast(`Moved to ${destName}`);
     }
@@ -139,6 +147,8 @@
               <div class="tx-edit">
                 <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
                 <input class="note-input" bind:value={editNote} placeholder="Note (optional)" />
+                <div class="mini-lbl">Paid back to you (bill split / pay first)</div>
+                <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder="0.00" />
                 <div class="mini-lbl">Move to category</div>
                 <div class="chip-grid">
                   {#each month.categories as c (c.key)}
@@ -157,6 +167,7 @@
                 <div>
                   <div class="tx-date">{formatDate(tx.date)}{formatTime(tx.date) ? ` · ${formatTime(tx.date)}` : ''}</div>
                   {#if tx.note}<div class="tx-note">{tx.note}</div>{/if}
+                  {#if tx.reimbursed}<div class="tx-back">−RM {fmt(tx.reimbursed)} paid back · net RM {fmt(txNet(tx))}</div>{/if}
                 </div>
                 <span class="num tx-amt">RM {fmt(tx.amount)}</span>
                 <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(i, tx)}>
@@ -200,6 +211,12 @@
     font-size: 11.5px;
     color: var(--dim);
     margin-top: 2px;
+  }
+  .tx-back {
+    font-size: 11.5px;
+    color: var(--good);
+    font-family: var(--mono);
+    margin-top: 3px;
   }
   .tx-amt {
     font-weight: 600;

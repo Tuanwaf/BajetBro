@@ -25,12 +25,18 @@
   let editAmt = $state('');
   let editNote = $state('');
   let editLabel = $state('');
+  let editPaid = $state('');
+
+  // extra.actual is stored NET (full paid - paid back); reimbursed tracks the
+  // payback so the full amount = actual + reimbursed.
+  const fullOf = (e) => round2((e.actual || 0) + (e.reimbursed || 0));
 
   function startEdit(x) {
     editingIdx = x.idx;
-    editAmt = String(x.e.actual);
+    editAmt = String(fullOf(x.e));
     editNote = x.e.note || '';
     editLabel = x.e.name;
+    editPaid = x.e.reimbursed ? String(x.e.reimbursed) : '';
   }
   function cancelEdit() {
     editingIdx = null;
@@ -38,8 +44,11 @@
   async function saveEdit() {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
+    const paid = Math.min(Math.max(parseFloat(editPaid) || 0, 0), amt);
     const name = editLabel.trim() || label;
-    const extras = month.extras.map((e, i) => (i === editingIdx ? { ...e, actual: amt, note: editNote.trim() || undefined, name } : e));
+    const extras = month.extras.map((e, i) =>
+      i === editingIdx ? { ...e, actual: round2(amt - paid), reimbursed: paid || undefined, note: editNote.trim() || undefined, name } : e
+    );
     await db.months.update(month.key, { extras });
     editingIdx = null;
     if (name !== label) showToast(`Moved to ${name}`);
@@ -87,6 +96,8 @@
           <div class="tx-edit">
             <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
             <input class="note-input" bind:value={editNote} placeholder="Note (e.g. Shopee, Tiktok)" />
+            <div class="mini-lbl">Paid back to you (bill split / pay first)</div>
+            <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder="0.00" />
             <div class="mini-lbl">Label</div>
             <input class="note-input" bind:value={editLabel} placeholder="Ad-hoc label" />
             <div style="display:flex; gap:8px; margin-top:10px;">
@@ -99,8 +110,9 @@
             <div>
               <div class="tx-date">{formatDate(x.e.date)}{formatTime(x.e.date) ? ` · ${formatTime(x.e.date)}` : ''}</div>
               {#if x.e.note}<div class="tx-note">{x.e.note}</div>{/if}
+              {#if x.e.reimbursed}<div class="tx-back">−RM {fmt(x.e.reimbursed)} paid back · net RM {fmt(x.e.actual)}</div>{/if}
             </div>
-            <span class="num tx-amt">RM {fmt(x.e.actual)}</span>
+            <span class="num tx-amt">RM {fmt(fullOf(x.e))}</span>
             <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(x)}>
               <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
             </button>
@@ -141,6 +153,12 @@
     font-size: 11.5px;
     color: var(--dim);
     margin-top: 2px;
+  }
+  .tx-back {
+    font-size: 11.5px;
+    color: var(--good);
+    font-family: var(--mono);
+    margin-top: 3px;
   }
   .tx-amt {
     font-weight: 600;
