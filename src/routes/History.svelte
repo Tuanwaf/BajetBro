@@ -1,6 +1,12 @@
 <script>
   import { closedMonths, currentMonth } from '../lib/stores.js';
-  import { computeAdhocActual, computeSpentTotal } from '../lib/calc.js';
+  import { computeAdhocActual, computeSpentTotal, round2 } from '../lib/calc.js';
+
+  function groupExtras(extras) {
+    const map = new Map();
+    for (const e of extras || []) map.set(e.name, round2((map.get(e.name) || 0) + (e.actual || 0)));
+    return [...map.entries()].map(([name, total]) => ({ name, total }));
+  }
   import { fmt } from '../lib/format.js';
   import { ADHOC_COLOR } from '../lib/constants.js';
 
@@ -128,11 +134,11 @@
           <span class="num">RM {fmt(cat.actual)}</span>
         </div>
       {/each}
-      {#each m.extras ?? [] as extra}
+      {#each groupExtras(m.extras) as extra (extra.name)}
         <div class="detail-row">
           <span class="dot" style="background:{ADHOC_COLOR}"></span>
           <span class="name">{extra.name}</span>
-          <span class="num">RM {fmt(extra.actual)}</span>
+          <span class="num">RM {fmt(extra.total)}</span>
         </div>
       {/each}
     </div>

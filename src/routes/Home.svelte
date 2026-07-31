@@ -15,6 +15,7 @@
   import { currentView } from '../lib/viewStore.js';
   import db from '../lib/db.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
+  import AdhocDetailSheet from './AdhocDetailSheet.svelte';
 
   let { onEndMonth } = $props();
 
@@ -36,7 +37,15 @@
   let tabungHajiTotal = $derived(th ? computeTabungHajiTotal2(th, pots, goalList, divs, sSpends) : 0);
 
   let adhocOpen = $state(false);
+  let adhocLabel = $state(null);
   let adhocInfo = $derived(rowInfo({ actual: adhocActual, planned: adhocPlanned }));
+  // Collapse ad-hoc extras that share a label into one line (summed); the
+  // individual entries stay viewable/editable in the AdhocDetailSheet.
+  let adhocGroups = $derived.by(() => {
+    const map = new Map();
+    for (const e of month?.extras || []) map.set(e.name, round2((map.get(e.name) || 0) + (e.actual || 0)));
+    return [...map.entries()].map(([name, total]) => ({ name, total }));
+  });
   let detailCategoryKey = $state(null);
   let detailCategory = $derived(detailCategoryKey ? month?.categories.find((c) => c.key === detailCategoryKey) : null);
 
@@ -151,10 +160,12 @@
         <span class="cat-note" class:over={adhocInfo.over} class:under={!adhocInfo.over}>
           {adhocInfo.over ? `Over by RM ${fmt(adhocActual - adhocPlanned)}` : `RM ${fmt(adhocPlanned - adhocActual)} left · auto from income`}
         </span>
-        {#if month.extras?.length}
+        {#if adhocGroups.length}
           <div class="adhoc-sub" class:open={adhocOpen}>
-            {#each month.extras as extra}
-              <div class="item"><span>{extra.name}</span><b>RM {fmt(extra.actual)}</b></div>
+            {#each adhocGroups as g (g.name)}
+              <div class="item item-link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); adhocLabel = g.name; }} onkeydown={(e) => e.key === 'Enter' && (adhocLabel = g.name)}>
+                <span>{g.name} &rsaquo;</span><b>RM {fmt(g.total)}</b>
+              </div>
             {/each}
           </div>
         {/if}
@@ -171,6 +182,7 @@
 {/if}
 
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
+<AdhocDetailSheet open={adhocLabel != null} label={adhocLabel} onClose={() => (adhocLabel = null)} />
 
 <style>
   .lock-btn {
@@ -192,5 +204,11 @@
   }
   .locked-row {
     opacity: 0.85;
+  }
+  .item-link {
+    cursor: pointer;
+  }
+  .item-link span {
+    color: var(--gold);
   }
 </style>
