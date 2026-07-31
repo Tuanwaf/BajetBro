@@ -191,10 +191,11 @@
     <h2>Add entry</h2>
     <span style="width:38px;"></span>
   </div>
-  <div class="sheet-body">
-    <div class="amt-display"><span class="cur">{amtCur}</span><span class="val">{kpDisplay}</span></div>
+  <div class="sheet-body add-body">
+    <div class="amt-display amt-fixed"><span class="cur">{amtCur}</span><span class="val">{kpDisplay}</span></div>
 
-    <div class="field-lbl">Category</div>
+    <div class="add-scroll">
+    <div class="field-lbl" style="margin-top:6px;">Category</div>
     <div class="chip-grid">
       {#if tmpl}
         {#each tmpl.categories as cat (cat.key)}
@@ -276,14 +277,50 @@
 
     <div class="field-lbl">Note (optional)</div>
     <input class="note-input" placeholder="e.g. Deposit, top-up, refund…" bind:value={noteValue} />
-
-    <div class="field-lbl">Amount</div>
-    <div class="keypad">
-      {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'] as k}
-        <button class="key" class:op={k === '⌫'} onclick={(e) => pressKey(k, e)}>{k}</button>
-      {/each}
     </div>
 
-    <button class="save-btn" onclick={save}>Save</button>
+    <div class="kp-foot">
+      <div class="keypad">
+        {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'] as k}
+          <button class="key" class:op={k === '⌫'} onclick={(e) => pressKey(k, e)}>{k}</button>
+        {/each}
+      </div>
+      <button class="save-btn" onclick={save}>Save</button>
+    </div>
   </div>
 </div>
+
+<style>
+  /* Amount pinned at the top, keypad + Save pinned at the bottom, only the
+     category chips / options scroll in between -- so the amount stays visible
+     while typing and Save is always reachable. */
+  .add-body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+  }
+  .amt-fixed {
+    flex-shrink: 0;
+    padding: 12px 20px 10px;
+  }
+  .add-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 20px 10px;
+    scrollbar-width: none;
+  }
+  .add-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .kp-foot {
+    flex-shrink: 0;
+    padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    border-top: 1px solid var(--stroke);
+    background: var(--ink);
+  }
+  .kp-foot .keypad {
+    margin-top: 0;
+  }
+</style>
