@@ -26,6 +26,7 @@
 
   const MAX_CENTS = 99999999;
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
+  let step = $state(1); // 1 = amount, 2 = category + note
 
   let selectedGoal = $derived(goalList.find((g) => g.id === selectedGoalId) || null);
   // Goals eligible for a "spend on a goal" entry: savings goals with reserve left.
@@ -40,6 +41,7 @@
     addCcy = 'RM';
     kpCents = 0;
     noteValue = '';
+    step = 1;
   }
 
   $effect(() => {
@@ -56,6 +58,17 @@
       const g = goalList.find((x) => x.id === it.goalId);
       if (g) selectGoal(g);
     }
+    // Coming from a Goals-page button, the goal/mode is already chosen -- jump
+    // straight to picking the amount... no, the amount is step 1, so start there
+    // but the category is pre-selected for step 2.
+    step = 1;
+  }
+
+  function next() {
+    if (kpCents > 0) step = 2;
+  }
+  function back() {
+    step = 1;
   }
 
   function pressKey(k, ev) {
@@ -183,19 +196,53 @@
   }
 </script>
 
-<div class="sheet" class:open>
-  <div class="sheet-hd">
-    <button class="icon-btn" aria-label="Close" onclick={onClose}>
-      <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-    </button>
-    <h2>Add entry</h2>
-    <span style="width:38px;"></span>
-  </div>
-  <div class="sheet-body add-body">
-    <div class="amt-display amt-fixed"><span class="cur">{amtCur}</span><span class="val">{kpDisplay}</span></div>
+<div class="sheet add-sheet" class:open>
+  <div class="add-track" class:step2={step === 2}>
 
+    <!-- STEP 1 · amount -->
+    <div class="add-screen">
+      <div class="sheet-hd">
+        <button class="icon-btn" aria-label="Close" onclick={onClose}>
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <h2>Add entry</h2>
+        <span style="width:38px;"></span>
+      </div>
+      <div class="amt-big">
+        <div class="cap">How much?</div>
+        <div class="val"><span class="cur">{amtCur}</span>{kpDisplay}</div>
+      </div>
+      <div class="kp1">
+        <div class="keypad">
+          {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9'] as k}
+            <button class="key" onclick={(e) => pressKey(k, e)}>{k}</button>
+          {/each}
+          <button class="key op" onclick={(e) => pressKey('⌫', e)} aria-label="Delete">⌫</button>
+          <button class="key" onclick={(e) => pressKey('0', e)}>0</button>
+          <button class="key next" disabled={kpCents === 0} onclick={next} aria-label="Next">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l5 5L19 6.5" stroke="#241a05" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2 · category + note -->
+    <div class="add-screen">
+      <div class="sheet-hd">
+        <button class="icon-btn" aria-label="Back" onclick={back}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 1 3 7l6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Add entry</h2>
+        <button class="icon-btn" aria-label="Close" onclick={onClose}>
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="amt-sum">
+        <span class="cur">{amtCur}</span><span class="v">{kpDisplay}</span>
+        <button class="edit-amt" onclick={back}>edit</button>
+      </div>
     <div class="add-scroll">
-    <div class="field-lbl" style="margin-top:6px;">Category</div>
+    <div class="field-lbl" style="margin-top:2px;">Category</div>
     <div class="chip-grid">
       {#if tmpl}
         {#each tmpl.categories as cat (cat.key)}
@@ -279,48 +326,53 @@
     <input class="note-input" placeholder="e.g. Deposit, top-up, refund…" bind:value={noteValue} />
     </div>
 
-    <div class="kp-foot">
-      <div class="keypad">
-        {#each ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'] as k}
-          <button class="key" class:op={k === '⌫'} onclick={(e) => pressKey(k, e)}>{k}</button>
-        {/each}
+      <div class="save-wrap">
+        <button class="save-btn" disabled={!selectedCatKey} onclick={save}>Save</button>
       </div>
-      <button class="save-btn" onclick={save}>Save</button>
     </div>
+
   </div>
 </div>
 
 <style>
-  /* Amount pinned at the top, keypad + Save pinned at the bottom, only the
-     category chips / options scroll in between -- so the amount stays visible
-     while typing and Save is always reachable. */
-  .add-body {
+  /* Two screens on a horizontal track: step 1 (amount) slides to step 2
+     (category + note). The sheet clips the off-screen half. */
+  .add-sheet { overflow: hidden; }
+  .add-track {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 200%;
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    padding: 0;
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
   }
-  .amt-fixed {
+  .add-track.step2 { transform: translateX(-50%); }
+  .add-screen { width: 50%; display: flex; flex-direction: column; min-height: 0; }
+
+  /* step 1 */
+  .amt-big { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .amt-big .cap { font-size: 12px; color: var(--lo); font-weight: 600; margin-bottom: 6px; }
+  .amt-big .val { font-family: var(--mono); font-size: 52px; font-weight: 600; letter-spacing: -0.02em; }
+  .amt-big .val .cur { font-size: 22px; color: var(--lo); vertical-align: 9px; margin-right: 4px; }
+  .kp1 { flex-shrink: 0; padding: 8px 20px calc(env(safe-area-inset-bottom, 0px) + 20px); }
+  .kp1 .keypad { margin-top: 0; gap: 10px; }
+  .key.next { background: var(--gold); border-color: var(--gold); display: flex; align-items: center; justify-content: center; }
+  .key.next:disabled { opacity: 0.35; }
+  .key.next svg { width: 24px; height: 24px; }
+
+  /* step 2 */
+  .amt-sum { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 0 12px; }
+  .amt-sum .cur { font-size: 15px; color: var(--lo); margin-right: 2px; }
+  .amt-sum .v { font-family: var(--mono); font-size: 26px; font-weight: 600; }
+  .amt-sum .edit-amt { font-size: 11px; color: var(--gold); font-weight: 700; border: 1px solid var(--stroke-2); border-radius: 99px; padding: 3px 10px; background: none; margin-left: 6px; }
+  .add-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 10px; scrollbar-width: none; }
+  .add-scroll::-webkit-scrollbar { display: none; }
+  .save-wrap {
     flex-shrink: 0;
-    padding: 12px 20px 10px;
-  }
-  .add-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 0 20px 10px;
-    scrollbar-width: none;
-  }
-  .add-scroll::-webkit-scrollbar {
-    display: none;
-  }
-  .kp-foot {
-    flex-shrink: 0;
-    padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 18px);
     border-top: 1px solid var(--stroke);
     background: var(--ink);
   }
-  .kp-foot .keypad {
-    margin-top: 0;
-  }
+  .save-btn:disabled { opacity: 0.4; }
 </style>
