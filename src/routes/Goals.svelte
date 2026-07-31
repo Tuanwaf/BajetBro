@@ -226,9 +226,9 @@
 <h2 class="title">Goals</h2>
 <p class="sub">Save up, then put it where it counts.</p>
 
-<div class="balance-card">
+<div class="balance-card" style="border-color:var(--gold);">
   <div class="balance-top"><div class="lbl">Ready to allocate</div></div>
-  <div class="balance-amt"><span class="cur">RM</span>{fmt(pool)}</div>
+  <div class="balance-amt" style="color:var(--gold);"><span class="cur">RM</span>{fmt(pool)}</div>
   <div style="font-size:12px; color:var(--lo); position:relative; z-index:1;">From your Saving each month plus dividends — spread it across your goals below. Anything left over grows in Tabung Haji.</div>
   <div class="pool-actions">
     <button class="primary" onclick={() => goAdd('addgoal')}>Add to a goal</button>
@@ -241,7 +241,7 @@
   {@const alloc = goalAllocated(g)}
   {@const reached = goalReached(g)}
   {@const pct = g.target > 0 ? Math.min(100, Math.round((alloc / g.target) * 100)) : 0}
-  <div class="card goal-card" class:reached onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
+  <div class="card goal-card" class:reached style="border-color:{g.color};" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
     <div class="goal-top">
       <span class="goal-name"><span class="dot" style="background:{g.color}"></span>{g.label}</span>
       <span class="goal-nums"><b class="num">{fmt(alloc)}</b> / {fmt(g.target)}</span>
@@ -515,7 +515,7 @@
     <p class="sub" style="margin-top:4px;">Goals you've spent or completed.</p>
     {#each closedGoals as g (g.id)}
       {@const alloc = goalAllocated(g)}
-      <div class="card goal-card closed" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
+      <div class="card goal-card closed" style="border-color:{g.color};" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
         <div class="goal-top">
           <span class="goal-name"><span class="dot" style="background:{g.color}"></span>{g.label}</span>
           <span class="goal-nums"><b class="num">{fmt(alloc)}</b> / {fmt(g.target)}</span>
