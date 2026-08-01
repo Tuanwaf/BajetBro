@@ -1,5 +1,5 @@
 <script>
-  import { template, currentMonth, givingGoalsEnabled, tabungHajiEnabled } from '../lib/stores.js';
+  import { template, currentMonth } from '../lib/stores.js';
   import { computeBufferPlanned } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
@@ -112,10 +112,6 @@
   async function deleteBufferLabel(index) {
     const updated = bufferLabels.filter((_, i) => i !== index);
     await db.template.put({ ...tmpl, bufferLabels: updated });
-  }
-
-  async function toggleFlag(key, checked) {
-    await db.meta.put({ key, value: checked });
   }
 
   function handlePickFile(e) {
@@ -236,19 +232,6 @@
   </div>
   <p class="hint" style="margin-left:4px;">These are the quick-pick chips shown when logging a Buffer expense — you can still type a one-off custom label there too.</p>
 {/if}
-
-<div class="section-hd"><h3>Personal features</h3><span>this device only</span></div>
-<div class="card" style="display:flex; flex-direction:column; gap:12px;">
-  <label class="bonus-toggle">
-    <input type="checkbox" checked={$tabungHajiEnabled} onchange={(e) => toggleFlag('tabungHajiEnabled', e.target.checked)} />
-    <span>Tabung Haji tracking (Fixed deposit, Savings, Dividends)</span>
-  </label>
-  <label class="bonus-toggle">
-    <input type="checkbox" checked={$givingGoalsEnabled} onchange={(e) => toggleFlag('givingGoalsEnabled', e.target.checked)} />
-    <span>"Give as you go" goal type</span>
-  </label>
-</div>
-<p class="hint" style="margin-left:4px;">On for this device only — never affects anyone else's install. Usually flips on by itself if you already have matching data (e.g. an existing giving-goal); this is a manual fallback, mainly useful after reinstalling without a backup.</p>
 
 <div class="section-hd"><h3>Backup &amp; transfer</h3><span>move to another device</span></div>
 <div class="card" style="display:flex; flex-direction:column; gap:10px;">

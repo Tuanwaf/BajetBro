@@ -1,5 +1,7 @@
 <script>
   import { currentView, addOpen, addIntent } from './lib/viewStore.js';
+  import { currentMonth } from './lib/stores.js';
+  import { showToast } from './lib/toast.js';
   import TabBar from './lib/components/TabBar.svelte';
   import Toast from './lib/components/Toast.svelte';
   import Home from './routes/Home.svelte';
@@ -15,6 +17,13 @@
   function closeAdd() {
     addOpen.set(false);
     addIntent.set(null);
+  }
+
+  function handleAddClick() {
+    // Nothing to log against yet -- a fresh install has no month until the
+    // Home onboarding form creates one.
+    if (!$currentMonth) return showToast('Set up your first month on Home first');
+    addOpen.set(true);
   }
 
   // Only allow the iOS rubber-band bounce when the page is actually tall
@@ -70,7 +79,7 @@
 
   <div class="status-bar-blur"></div>
 
-  <TabBar onAddClick={() => addOpen.set(true)} />
+  <TabBar onAddClick={handleAddClick} />
 
   <AddExpenseSheet open={$addOpen} intent={$addIntent} onClose={closeAdd} />
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />

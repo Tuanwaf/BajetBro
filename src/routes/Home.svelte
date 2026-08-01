@@ -11,8 +11,9 @@
     round2,
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
-  import { BUFFER_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR, MONTH_NAMES } from '../lib/constants.js';
   import { currentView } from '../lib/viewStore.js';
+  import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
   import BufferDetailSheet from './BufferDetailSheet.svelte';
@@ -54,6 +55,36 @@
   let loanLent = $derived(round2(loanList.filter((l) => l.direction === 'lent').reduce((s, l) => s + l.amount, 0)));
   let loanOwed = $derived(round2(loanList.filter((l) => l.direction === 'borrowed').reduce((s, l) => s + l.amount, 0)));
   let loanLogOpen = $state(false);
+
+  // First-run setup: a fresh install has a template but no month yet, and
+  // nothing else in the app can create the first one (End Month only rolls
+  // an EXISTING month forward), so Home has to offer it directly.
+  let obIncome = $state('');
+  let obStartingBalance = $state('');
+
+  async function startFirstMonth() {
+    const income = parseFloat(obIncome);
+    if (!income) return showToast('Enter your salary first');
+    const startingBalance = parseFloat(obStartingBalance) || 0;
+    const now = new Date();
+    const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const label = MONTH_NAMES[now.getMonth()];
+    await db.months.put({
+      key,
+      order: now.getMonth() + 1,
+      label,
+      closed: 0,
+      income,
+      bonus: 0,
+      additionalIncome: 0,
+      startingBalance,
+      categories: tmpl.categories.map((c) => ({ ...c, actual: 0 })),
+      extras: [],
+      recordedTotal: 0,
+      startedAt: now.toISOString(),
+    });
+    showToast(`${label} started`);
+  }
 
   function rowInfo(cat) {
     const pct = cat.planned > 0 ? Math.min(100, Math.round((cat.actual / cat.planned) * 100)) : cat.actual > 0 ? 100 : 0;
@@ -197,6 +228,17 @@
     <svg viewBox="0 0 24 24" fill="none"><path d="M5 21V4M5 4h11l-2 4 2 4H5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
     End {month.label} &amp; start next month
   </button>
+{:else if tmpl}
+  <h2 class="title">Welcome 👋</h2>
+  <p class="sub">Let's set up your first month.</p>
+  <div class="card">
+    <div class="field-lbl" style="margin-top:0;">Monthly salary</div>
+    <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={obIncome} />
+    <div class="field-lbl">Starting balance <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
+    <input class="note-input num" placeholder="0.00 — money you already have set aside" inputmode="decimal" bind:value={obStartingBalance} />
+  </div>
+  <p class="hint" style="margin:10px 4px;">Categories and their planned amounts can be set up afterwards in Settings.</p>
+  <button class="save-btn" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
 {:else}
   <p class="sub">Loading...</p>
 {/if}
