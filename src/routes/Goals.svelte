@@ -110,8 +110,15 @@
   // no such restriction -- that money is still sitting in your pool/TH either
   // way, so correcting an old reservation just moves it between "reserved"
   // and "ready to allocate", both of which are still genuinely yours.
+  // Cycles don't line up with calendar months (e.g. an "August" cycle can
+  // start on 31 July), so this compares against the cycle's actual start
+  // moment (recorded when it was created), not the month key. Months from
+  // before that field existed have no boundary to check -- lenient default.
   function isCurrentCycle(dateStr) {
-    return !!month && typeof dateStr === 'string' && dateStr.slice(0, 7) === month.key;
+    if (!month || !dateStr) return false;
+    if (!month.startedAt) return true;
+    const d = new Date(dateStr);
+    return !isNaN(d) && d >= new Date(month.startedAt);
   }
   function canEditAlloc(g, a) {
     return g.type !== 'giving' || isCurrentCycle(a.date);
@@ -504,12 +511,18 @@
                   <span class="num" style="margin-right:8px; font-size:12.5px;">
                     {#if g.currency && s.ccy === g.currency}{s.ccy} {fmt(s.amount)} <span style="color:var(--dim)">· RM {fmt(spendRM(g, s))}</span>{:else}RM {fmt(s.amount)}{/if}
                   </span>
-                  <button class="icon-btn small" aria-label="Edit spend" onclick={() => startEditSpend(g, i)}>
-                    <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-                  </button>
-                  <button class="icon-btn small" aria-label="Delete spend" onclick={() => deleteGoalSpend(g, i)}>
-                    <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  </button>
+                  {#if isCurrentCycle(s.date)}
+                    <button class="icon-btn small" aria-label="Edit spend" onclick={() => startEditSpend(g, i)}>
+                      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                    </button>
+                    <button class="icon-btn small" aria-label="Delete spend" onclick={() => deleteGoalSpend(g, i)}>
+                      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                  {:else}
+                    <span class="icon-btn small" style="color:var(--dim); cursor:default;" aria-label="Only this cycle's spends can be edited" title="Only this cycle's spends can be edited">
+                      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    </span>
+                  {/if}
                 </div>
               {/if}
             {:else}
@@ -519,9 +532,6 @@
           <button class="new-goal-btn" style="color:var(--good); border-color:rgba(74,222,128,0.4); margin-top:12px;" onclick={() => goAdd('spendgoal', g.id)}>+ Log a spend</button>
           {#if alloc < g.target}
             <button class="new-goal-btn" style="margin-top:8px;" onclick={() => goAdd('addgoal', g.id)}>+ Reserve more</button>
-          {/if}
-          {#if left > 0.005}
-            <button class="new-goal-btn" style="color:#7dd3fc; border-color:rgba(125,211,252,0.4); margin-top:8px;" onclick={() => goAdd('unreserve', g.id)}>+ Take back to pool</button>
           {/if}
           <div class="card" style="margin-top:16px; display:flex; align-items:center; justify-content:space-between;">
             <div><div style="font-size:12px; color:var(--lo);">Left in this goal</div><div class="num" style="font-size:19px; font-weight:700; margin-top:2px;">RM {fmt(left)}</div></div>

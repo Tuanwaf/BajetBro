@@ -59,6 +59,10 @@
         categories: tmpl.categories.map((c) => ({ ...c, actual: 0 })),
         extras: [],
         recordedTotal: 0,
+        // The exact moment this cycle began -- cycles don't align to calendar
+        // month boundaries (e.g. "August" can start on 31 July), so this is
+        // what "current cycle" checks compare against, not the month key.
+        startedAt: new Date().toISOString(),
       });
 
       // No Hutang pot is created here anymore -- a pot only opens once money
