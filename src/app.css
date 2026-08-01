@@ -268,20 +268,18 @@ h2.title {
   padding-top: 10px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 40;
-  transition: transform 0.18s ease;
 }
 /* Hidden while a text field has focus -- see App.svelte. Sidesteps iOS
    Safari's unreliable position:fixed-vs-keyboard behavior entirely instead
-   of fighting it with viewport math. Hiding is near-instant (the native
-   keyboard's own slide-up is faster than a leisurely CSS transition, so a
-   slow hide left the FAB -- which pokes 24px above the bar's own box --
-   visible above the keyboard for a moment); reappearing on blur can afford
-   to be smoother since nothing is racing it by then.
-*/
+   of fighting it with viewport math. A transform-based slide-away still let
+   a sliver of the FAB (which pokes 24px above the bar's own box) ghost
+   through during scroll while the keyboard was open -- WebKit's known
+   fixed-position-plus-keyboard repaint glitch isn't reliably fixed by
+   transforms, since the element is still in the render/compositing tree.
+   `display: none` removes it from rendering entirely, so there's nothing
+   left to ghost. */
 .tabbar.kb-hidden {
-  transform: translateY(120%);
-  pointer-events: none;
-  transition: transform 0.05s ease;
+  display: none;
 }
 .tab {
   flex: 1;
