@@ -12,7 +12,34 @@
     <title>BajetBro</title>
   </head>
   <body>
+    <div id="splash">
+      <img src="%BASE_URL%icons/icon-512.png" alt="" width="112" height="112" />
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
+    <style>
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0d0f14;
+        transition: opacity 0.35s ease;
+      }
+      #splash img {
+        border-radius: 22px;
+        animation: splash-pulse 1.4s ease-in-out infinite;
+      }
+      #splash.splash-hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      @keyframes splash-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.08); opacity: 0.75; }
+      }
+    </style>
   </body>
 </html>

@@ -10,11 +10,22 @@ async function init() {
     await navigator.storage.persist().catch(() => {});
   }
 
+  const minSplashTime = new Promise((resolve) => setTimeout(resolve, 450));
+
   await seedIfNeeded(db);
 
   mount(App, {
     target: document.getElementById('app'),
   });
+
+  // Keep the splash up briefly even on a fast/warm load, so its pulse is
+  // actually visible rather than flashing past in a frame or two.
+  await minSplashTime;
+  const splash = document.getElementById('splash');
+  if (splash) {
+    splash.classList.add('splash-hide');
+    splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+  }
 }
 
 init();
