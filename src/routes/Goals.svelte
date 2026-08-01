@@ -1,5 +1,5 @@
 <script>
-  import { hutangPots, goals, tabungHaji, dividends, savingsSpends, currentMonth } from '../lib/stores.js';
+  import { hutangPots, goals, tabungHaji, dividends, savingsSpends, currentMonth, givingGoalsEnabled, tabungHajiEnabled } from '../lib/stores.js';
   import {
     computeReadyToAllocate,
     computeOpenSavingsReserve,
@@ -270,7 +270,10 @@
 <div class="balance-card" style="border-color:var(--gold);">
   <div class="balance-top"><div class="lbl">Ready to allocate</div></div>
   <div class="balance-amt" style="color:var(--gold);"><span class="cur">RM</span>{fmt(pool)}</div>
-  <div style="font-size:12px; color:var(--lo); position:relative; z-index:1;">From your Saving each month plus dividends — spread it across your goals below. Anything left over grows in Tabung Haji.</div>
+  <div style="font-size:12px; color:var(--lo); position:relative; z-index:1;">
+    {#if $tabungHajiEnabled}From your Saving each month plus dividends — spread it across your goals below. Anything left over grows in Tabung Haji.
+    {:else}From your Saving each month — spread it across your goals below. Anything left over stays here, ready when you need it.{/if}
+  </div>
   <div class="pool-actions">
     <button class="primary" onclick={() => goAdd('addgoal')}>Add to a goal</button>
     <button class="ghost" onclick={() => goAdd('spend')}>Spend from savings</button>
@@ -314,6 +317,7 @@
   </button>
 </div>
 
+{#if $tabungHajiEnabled}
 <div class="section-hd"><h3>Where it grows</h3><span>savings &amp; investments</span></div>
 {#if th}
   <div class="balance-card" style="margin-bottom:10px;">
@@ -375,6 +379,7 @@
   </div>
 </div>
 <p class="hint">Once an ASB account opens, it becomes a second growth vehicle here — same pattern as Tabung Haji.</p>
+{/if}
 
 <!-- ===================== GOAL DETAIL SHEET ===================== -->
 <div class="sheet" class:open={detailGoal != null}>
@@ -572,12 +577,14 @@
     <div class="type-row">
       <button class="type-opt" class:sel={ngType === 'savings'} onclick={() => (ngType = 'savings')}>
         <div class="type-t">Save for it</div>
-        <div class="type-d">Set money aside and spend it later yourself. It stays in Tabung Haji until you do.</div>
+        <div class="type-d">Set money aside and spend it later yourself. {$tabungHajiEnabled ? 'It stays in Tabung Haji until you do.' : 'It stays set aside until you do.'}</div>
       </button>
-      <button class="type-opt" class:sel={ngType === 'giving'} onclick={() => (ngType = 'giving')}>
-        <div class="type-t">Give as you go</div>
-        <div class="type-d">Money goes out each time you add to it — handed over as you contribute.</div>
-      </button>
+      {#if $givingGoalsEnabled}
+        <button class="type-opt" class:sel={ngType === 'giving'} onclick={() => (ngType = 'giving')}>
+          <div class="type-t">Give as you go</div>
+          <div class="type-d">Money goes out each time you add to it — handed over as you contribute.</div>
+        </button>
+      {/if}
     </div>
     <div class="field-lbl">Colour</div>
     <div class="color-row">

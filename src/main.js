@@ -3,6 +3,7 @@ import './app.css';
 import App from './App.svelte';
 import db from './lib/db.js';
 import { seedIfNeeded } from './lib/seed.js';
+import { initPersonalizationFlags } from './lib/personalization.js';
 
 async function init() {
   if (navigator.storage?.persist) {
@@ -13,6 +14,7 @@ async function init() {
   const minSplashTime = new Promise((resolve) => setTimeout(resolve, 450));
 
   await seedIfNeeded(db);
+  await initPersonalizationFlags(db);
 
   mount(App, {
     target: document.getElementById('app'),

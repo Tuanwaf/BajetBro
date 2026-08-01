@@ -1,10 +1,11 @@
 import db from './db';
 import { migrateV1 } from './migrate.js';
+import { initPersonalizationFlags } from './personalization.js';
 
 const SCHEMA_VERSION = 2;
 
 export async function exportBackup() {
-  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans] = await Promise.all([
+  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans, givingGoalsEnabled, tabungHajiEnabled] = await Promise.all([
     db.template.get('current'),
     db.months.toArray(),
     db.hutangPots.toArray(),
@@ -13,6 +14,8 @@ export async function exportBackup() {
     db.goals.toArray(),
     db.savingsSpends.toArray(),
     db.loans.toArray(),
+    db.meta.get('givingGoalsEnabled'),
+    db.meta.get('tabungHajiEnabled'),
   ]);
 
   const payload = {
@@ -26,6 +29,8 @@ export async function exportBackup() {
     goals,
     savingsSpends,
     loans,
+    givingGoalsEnabled: !!givingGoalsEnabled?.value,
+    tabungHajiEnabled: !!tabungHajiEnabled?.value,
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -102,6 +107,13 @@ export async function importBackup(file) {
       // A restored backup already has real data -- mark seeded so the
       // historical seed script never overwrites it on a future load.
       await db.meta.put({ key: 'seeded', value: true });
+
+      if (data.givingGoalsEnabled) await db.meta.put({ key: 'givingGoalsEnabled', value: true });
+      if (data.tabungHajiEnabled) await db.meta.put({ key: 'tabungHajiEnabled', value: true });
     }
   );
+
+  // Fallback for backups exported before these flags existed -- infers them
+  // from the restored data itself (e.g. an existing giving-type goal).
+  await initPersonalizationFlags(db);
 }

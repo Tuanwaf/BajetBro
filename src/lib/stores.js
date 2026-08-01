@@ -43,3 +43,9 @@ export const savingsSpends = fromLiveQuery(
 );
 
 export const loans = fromLiveQuery(() => db.loans.orderBy('date').reverse().toArray(), []);
+
+// Personalization flags -- gate features specific to one person's own setup
+// (see lib/personalization.js) rather than showing them to every fresh
+// install. Stored per-device, so they never affect anyone else's data.
+export const givingGoalsEnabled = fromLiveQuery(async () => !!(await db.meta.get('givingGoalsEnabled'))?.value, false);
+export const tabungHajiEnabled = fromLiveQuery(async () => !!(await db.meta.get('tabungHajiEnabled'))?.value, false);
