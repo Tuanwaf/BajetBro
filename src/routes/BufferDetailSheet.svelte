@@ -3,7 +3,7 @@
   import { round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { ADHOC_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR } from '../lib/constants.js';
   import db from '../lib/db.js';
 
   let { open, label, onClose } = $props();
@@ -26,6 +26,7 @@
   let editNote = $state('');
   let editLabel = $state('');
   let editPaid = $state('');
+  let editPaidAbsolute = $state(false); // true once "edit total" or "clear" is tapped -- editPaid becomes the new total instead of an amount to add
 
   // extra.actual is stored NET (full paid - paid back); reimbursed tracks the
   // payback so the full amount = actual + reimbursed.
@@ -36,15 +37,28 @@
     editAmt = String(fullOf(x.e));
     editNote = x.e.note || '';
     editLabel = x.e.name;
-    editPaid = x.e.reimbursed ? String(x.e.reimbursed) : '';
+    editPaid = ''; // amount to ADD to e.reimbursed, not the new total
+    editPaidAbsolute = false;
   }
   function cancelEdit() {
     editingIdx = null;
   }
+  function editPaidTotal(e) {
+    editPaidAbsolute = true;
+    editPaid = e.reimbursed ? String(e.reimbursed) : '0';
+  }
+  function clearPaidTotal() {
+    editPaidAbsolute = true;
+    editPaid = '0';
+  }
   async function saveEdit() {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
-    const paid = Math.min(Math.max(parseFloat(editPaid) || 0, 0), amt);
+    const paidInput = parseFloat(editPaid) || 0;
+    const original = month.extras[editingIdx];
+    const paid = editPaidAbsolute
+      ? Math.min(Math.max(paidInput, 0), amt) // direct override of the total
+      : Math.min(Math.max((original.reimbursed || 0) + paidInput, 0), amt); // stacks onto what's already recorded
     const name = editLabel.trim() || label;
     const extras = month.extras.map((e, i) =>
       i === editingIdx ? { ...e, actual: round2(amt - paid), reimbursed: paid || undefined, note: editNote.trim() || undefined, name } : e
@@ -83,8 +97,8 @@
   <div class="sheet-body">
     <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
       <div style="display:flex; align-items:center; gap:8px;">
-        <span class="dot" style="background:{ADHOC_COLOR}"></span>
-        <span style="font-size:13.5px; color:var(--lo);">Ad-hoc · {label} total</span>
+        <span class="dot" style="background:{BUFFER_COLOR}"></span>
+        <span style="font-size:13.5px; color:var(--lo);">Buffer · {label} total</span>
       </div>
       <span class="num" style="font-weight:700;">RM {fmt(total)}</span>
     </div>
@@ -96,10 +110,24 @@
           <div class="tx-edit">
             <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
             <input class="note-input" bind:value={editNote} placeholder="Note (e.g. Shopee, Tiktok)" />
-            <div class="mini-lbl">Paid back to you (bill split / pay first)</div>
-            <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder="0.00" />
+            <div class="mini-lbl paid-hd">
+              <span>Paid back to you (bill split / pay first)</span>
+              {#if x.e.reimbursed}
+                <span class="paid-existing">
+                  already RM {fmt(x.e.reimbursed)}
+                  <button class="icon-btn tiny" aria-label="Edit paid-back total" onclick={() => editPaidTotal(x.e)}>
+                    <svg viewBox="0 0 24 24" fill="none" width="11" height="11"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                  </button>
+                  <button class="icon-btn tiny" aria-label="Clear paid-back amount" onclick={clearPaidTotal}>
+                    <svg viewBox="0 0 24 24" fill="none" width="11" height="11"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </span>
+              {/if}
+            </div>
+            <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder={editPaidAbsolute ? 'New total, e.g. 13.50' : x.e.reimbursed ? 'Add more, e.g. 1.00' : '0.00'} />
+            {#if editPaidAbsolute}<p class="hint-tiny">Editing the total directly — this replaces the RM {fmt(x.e.reimbursed || 0)} already recorded.</p>{/if}
             <div class="mini-lbl">Label</div>
-            <input class="note-input" bind:value={editLabel} placeholder="Ad-hoc label" />
+            <input class="note-input" bind:value={editLabel} placeholder="Buffer label" />
             <div style="display:flex; gap:8px; margin-top:10px;">
               <button class="io-btn" style="flex:1;" onclick={cancelEdit}>Cancel</button>
               <button class="save-btn" style="flex:1; margin-top:0;" onclick={saveEdit}>Save</button>
@@ -125,7 +153,7 @@
         <p class="hint" style="margin:2px 0;">No entries under this label.</p>
       {/each}
     </div>
-    <p class="hint">Same label, split into individual entries — change the Label field to move one under a different Ad-hoc name.</p>
+    <p class="hint">Same label, split into individual entries — change the Label field to move one under a different Buffer name.</p>
   </div>
 </div>
 
@@ -187,5 +215,29 @@
     letter-spacing: 0.04em;
     color: var(--dim);
     margin-top: 2px;
+  }
+  .paid-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .paid-existing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: none;
+    font-weight: 600;
+    color: var(--good);
+    flex-shrink: 0;
+  }
+  .icon-btn.tiny {
+    width: 20px;
+    height: 20px;
+  }
+  .hint-tiny {
+    font-size: 10.5px;
+    color: var(--dim);
+    margin: -2px 0 0;
   }
 </style>

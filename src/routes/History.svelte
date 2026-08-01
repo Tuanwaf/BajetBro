@@ -1,6 +1,6 @@
 <script>
   import { closedMonths, currentMonth } from '../lib/stores.js';
-  import { computeAdhocActual, computeSpentTotal, round2 } from '../lib/calc.js';
+  import { computeBufferActual, computeSpentTotal, round2 } from '../lib/calc.js';
 
   function groupExtras(extras) {
     const map = new Map();
@@ -8,7 +8,7 @@
     return [...map.entries()].map(([name, total]) => ({ name, total }));
   }
   import { fmt } from '../lib/format.js';
-  import { ADHOC_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR } from '../lib/constants.js';
 
   let closed = $derived($closedMonths ?? []);
   let month = $derived($currentMonth);
@@ -17,7 +17,7 @@
     if (!month) return [];
     const items = month.categories
       .map((c) => ({ name: c.name, color: c.color, spent: c.actual }))
-      .concat([{ name: 'Ad-hoc', color: ADHOC_COLOR, spent: computeAdhocActual(month) }])
+      .concat([{ name: 'Buffer', color: BUFFER_COLOR, spent: computeBufferActual(month) }])
       .filter((i) => i.spent > 0)
       .sort((a, b) => b.spent - a.spent);
     return items;
@@ -143,7 +143,7 @@
       {/each}
       {#each groupExtras(m.extras) as extra (extra.name)}
         <div class="detail-row">
-          <span class="dot" style="background:{ADHOC_COLOR}"></span>
+          <span class="dot" style="background:{BUFFER_COLOR}"></span>
           <span class="name">{extra.name}</span>
           <span class="num">RM {fmt(extra.total)}</span>
         </div>

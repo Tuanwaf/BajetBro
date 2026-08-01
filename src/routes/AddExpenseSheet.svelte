@@ -3,7 +3,7 @@
   import { goalAllocated, goalReserveLeft, goalReached } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { ADHOC_COLOR, ADHOC_LABEL_PRESETS } from '../lib/constants.js';
+  import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { currentView } from '../lib/viewStore.js';
 
@@ -13,12 +13,15 @@
   let tmpl = $derived($template);
   let pots = $derived($hutangPots ?? []);
   let goalList = $derived(($goals ?? []).filter((g) => !g.closed));
+  // Editable from Settings -> Buffer labels; falls back to the built-in
+  // defaults for templates created before that field existed.
+  let bufferLabels = $derived(tmpl?.bufferLabels ?? BUFFER_LABEL_PRESETS);
 
   // 'addgoal' = put money into a goal (reserve / give), 'spendgoal' = itemized
   // spend out of a savings goal, 'spend' = personal spend from the pool.
   let selectedCatKey = $state(null);
-  let selectedAdhocLabel = $state(null);
-  let customAdhocLabel = $state('');
+  let selectedBufferLabel = $state(null);
+  let customBufferLabel = $state('');
   let selectedGoalId = $state(null);
   let addCcy = $state('RM');
   let kpCents = $state(0);
@@ -35,8 +38,8 @@
 
   function reset() {
     selectedCatKey = null;
-    selectedAdhocLabel = null;
-    customAdhocLabel = '';
+    selectedBufferLabel = null;
+    customBufferLabel = '';
     selectedGoalId = null;
     addCcy = 'RM';
     kpCents = 0;
@@ -56,7 +59,15 @@
     selectCat(it.mode);
     if (it.goalId) {
       const g = goalList.find((x) => x.id === it.goalId);
-      if (g) selectGoal(g);
+      if (g) {
+        // Inlined rather than calling selectGoal(g): that reads the
+        // just-written selectedCatKey back reactively, which -- since this
+        // runs inside the $effect below -- makes the effect depend on state
+        // it also writes and sends it into an infinite update loop. Using
+        // the plain `it.mode` argument instead avoids the read-your-own-write.
+        selectedGoalId = g.id;
+        addCcy = it.mode === 'spendgoal' && g.currency ? g.currency : 'RM';
+      }
     }
     // Coming from a Goals-page button, the goal/mode is already chosen -- jump
     // straight to picking the amount... no, the amount is step 1, so start there
@@ -96,8 +107,8 @@
 
   function selectCat(key) {
     selectedCatKey = key;
-    selectedAdhocLabel = null;
-    customAdhocLabel = '';
+    selectedBufferLabel = null;
+    customBufferLabel = '';
     selectedGoalId = null;
     addCcy = 'RM';
   }
@@ -118,11 +129,11 @@
     const note = noteValue.trim();
     const now = new Date().toISOString();
 
-    if (selectedCatKey === 'adhoc') {
-      const label = selectedAdhocLabel === 'custom' ? customAdhocLabel.trim() || 'Misc' : selectedAdhocLabel || 'Misc';
+    if (selectedCatKey === 'buffer') {
+      const label = selectedBufferLabel === 'custom' ? customBufferLabel.trim() || 'Misc' : selectedBufferLabel || 'Misc';
       const extras = [...(month.extras || []), { name: label, actual: amt, date: now, note: note || undefined }];
       await db.months.update(month.key, { extras });
-      showToast(`Saved RM ${fmt(amt)} · Ad-hoc / ${label}`);
+      showToast(`Saved RM ${fmt(amt)} · Buffer / ${label}`);
       onClose();
       currentView.set('home');
       return;
@@ -251,8 +262,8 @@
           </button>
         {/each}
       {/if}
-      <button class="chip" class:selected={selectedCatKey === 'adhoc'} style="color:{ADHOC_COLOR}" onclick={() => selectCat('adhoc')}>
-        <span class="dot" style="background:{ADHOC_COLOR}"></span>Ad-hoc
+      <button class="chip" class:selected={selectedCatKey === 'buffer'} style="color:{BUFFER_COLOR}" onclick={() => selectCat('buffer')}>
+        <span class="dot" style="background:{BUFFER_COLOR}"></span>Buffer
       </button>
       <button class="chip" class:selected={selectedCatKey === 'addgoal'} style="color:#b07af2" onclick={() => selectCat('addgoal')}>
         <span class="dot" style="background:#b07af2"></span>Add to a goal
@@ -272,16 +283,16 @@
       <p class="hint">Money someone paid you back — credited to <b>this month's</b> Remaining, kept separate from your income. Use this when the payback arrives in a later month than the expense (for a same-month bill split, edit the expense instead).</p>
     {/if}
 
-    {#if selectedCatKey === 'adhoc'}
-      <div class="field-lbl">Ad-hoc label</div>
+    {#if selectedCatKey === 'buffer'}
+      <div class="field-lbl">Buffer label</div>
       <div class="chip-grid">
-        {#each ADHOC_LABEL_PRESETS as label}
-          <button class="chip ghost" class:selected={selectedAdhocLabel === label} style={selectedAdhocLabel === label ? `color:${ADHOC_COLOR}` : ''} onclick={() => (selectedAdhocLabel = label)}>{label}</button>
+        {#each bufferLabels as label}
+          <button class="chip ghost" class:selected={selectedBufferLabel === label} style={selectedBufferLabel === label ? `color:${BUFFER_COLOR}` : ''} onclick={() => (selectedBufferLabel = label)}>{label}</button>
         {/each}
-        <button class="chip ghost" class:selected={selectedAdhocLabel === 'custom'} style={selectedAdhocLabel === 'custom' ? `color:${ADHOC_COLOR}` : ''} onclick={() => (selectedAdhocLabel = 'custom')}>+ Custom</button>
+        <button class="chip ghost" class:selected={selectedBufferLabel === 'custom'} style={selectedBufferLabel === 'custom' ? `color:${BUFFER_COLOR}` : ''} onclick={() => (selectedBufferLabel = 'custom')}>+ Custom</button>
       </div>
-      {#if selectedAdhocLabel === 'custom'}
-        <input class="note-input" placeholder="Type your own label…" bind:value={customAdhocLabel} />
+      {#if selectedBufferLabel === 'custom'}
+        <input class="note-input" placeholder="Type your own label…" bind:value={customBufferLabel} />
       {/if}
     {/if}
 

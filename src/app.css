@@ -20,7 +20,7 @@
   --c-food: #c084f5;
   --c-spotify: #3ddc97;
   --c-saving: #e7b34e;
-  --c-adhoc: #f2555a;
+  --c-buffer: #f2555a;
 
   --h-initial: #3ddcb0;
   --h-used: #f2a154;
@@ -218,7 +218,7 @@ h2.title {
 .cat-note.under { color: var(--dim); }
 .cat-note.link { color: var(--gold); font-family: var(--body); font-weight: 600; cursor: pointer; }
 
-.adhoc-sub {
+.buffer-sub {
   margin: 6px 0 0 22px;
   padding-left: 10px;
   border-left: 2px solid var(--stroke-2);
@@ -226,9 +226,9 @@ h2.title {
   flex-direction: column;
   gap: 6px;
 }
-.adhoc-sub.open { display: flex; }
-.adhoc-sub .item { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--lo); }
-.adhoc-sub .item b { color: var(--hi); font-family: var(--mono); font-weight: 500; }
+.buffer-sub.open { display: flex; }
+.buffer-sub .item { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--lo); }
+.buffer-sub .item b { color: var(--hi); font-family: var(--mono); font-weight: 500; }
 
 .end-month-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;

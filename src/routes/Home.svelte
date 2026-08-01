@@ -1,8 +1,8 @@
 <script>
   import { currentMonth, template, hutangPots, tabungHaji, dividends, goals, savingsSpends } from '../lib/stores.js';
   import {
-    computeAdhocPlanned,
-    computeAdhocActual,
+    computeBufferPlanned,
+    computeBufferActual,
     computeSpentTotal,
     computeTotalRemaining,
     computeTotalBalance,
@@ -12,11 +12,11 @@
     round2,
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
-  import { ADHOC_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR } from '../lib/constants.js';
   import { currentView } from '../lib/viewStore.js';
   import db from '../lib/db.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
-  import AdhocDetailSheet from './AdhocDetailSheet.svelte';
+  import BufferDetailSheet from './BufferDetailSheet.svelte';
   import ReimbursementsSheet from './ReimbursementsSheet.svelte';
 
   let { onEndMonth } = $props();
@@ -30,8 +30,8 @@
   let sSpends = $derived($savingsSpends ?? []);
 
   let year = $derived(month ? month.key.split('-')[0] : '');
-  let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
-  let adhocActual = $derived(month ? computeAdhocActual(month) : 0);
+  let bufferPlanned = $derived(month ? computeBufferPlanned(month) : 0);
+  let bufferActual = $derived(month ? computeBufferActual(month) : 0);
   let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
   let totalRemaining = $derived(month ? computeTotalRemaining(month) : 0);
   let totalBalance = $derived(month ? computeTotalBalance(month) : null);
@@ -40,12 +40,12 @@
   let reimbursedTotal = $derived(month ? computeReimbursedTotal(month) : 0);
   let reimburseOpen = $state(false);
 
-  let adhocOpen = $state(false);
-  let adhocLabel = $state(null);
-  let adhocInfo = $derived(rowInfo({ actual: adhocActual, planned: adhocPlanned }));
-  // Collapse ad-hoc extras that share a label into one line (summed); the
-  // individual entries stay viewable/editable in the AdhocDetailSheet.
-  let adhocGroups = $derived.by(() => {
+  let bufferOpen = $state(false);
+  let bufferLabel = $state(null);
+  let bufferInfo = $derived(rowInfo({ actual: bufferActual, planned: bufferPlanned }));
+  // Collapse buffer extras that share a label into one line (summed); the
+  // individual entries stay viewable/editable in the BufferDetailSheet.
+  let bufferGroups = $derived.by(() => {
     const map = new Map();
     for (const e of month?.extras || []) map.set(e.name, round2((map.get(e.name) || 0) + (e.actual || 0)));
     return [...map.entries()].map(([name, total]) => ({ name, total }));
@@ -140,7 +140,7 @@
           <div class="track"><div class="fill" style="width:{info.pct}%; background:{info.over ? 'var(--red)' : cat.color}"></div></div>
           {#if cat.locked}
             <span class="cat-note" style="color:var(--gold);">
-              Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Ad-hoc` : `RM ${fmt(Math.abs(leftover))} pulled from Ad-hoc`}
+              Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Buffer` : `RM ${fmt(Math.abs(leftover))} pulled from Buffer`}
             </span>
           {:else if cat.key === 'saving'}
             <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('goals'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>Feeds your Goals pool &rarr;</span>
@@ -160,21 +160,21 @@
       </div>
     {/each}
 
-    <div class="cat-row" onclick={() => (adhocOpen = !adhocOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (adhocOpen = !adhocOpen)}>
-      <span class="dot" style="background:{ADHOC_COLOR}"></span>
+    <div class="cat-row" onclick={() => (bufferOpen = !bufferOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (bufferOpen = !bufferOpen)}>
+      <span class="dot" style="background:{BUFFER_COLOR}"></span>
       <div class="cat-body">
         <div class="cat-name-row">
-          <span>Ad-hoc</span>
-          <span class="cat-amt"><b class="num">RM {fmt(adhocActual)}</b> / {fmt(adhocPlanned)}</span>
+          <span>Buffer</span>
+          <span class="cat-amt"><b class="num">RM {fmt(bufferActual)}</b> / {fmt(bufferPlanned)}</span>
         </div>
-        <div class="track"><div class="fill" style="width:{adhocInfo.pct}%; background:{adhocInfo.over ? 'var(--red)' : ADHOC_COLOR}"></div></div>
-        <span class="cat-note" class:over={adhocInfo.over} class:under={!adhocInfo.over}>
-          {adhocInfo.over ? `Over by RM ${fmt(adhocActual - adhocPlanned)}` : `RM ${fmt(adhocPlanned - adhocActual)} left · auto from income`}
+        <div class="track"><div class="fill" style="width:{bufferInfo.pct}%; background:{bufferInfo.over ? 'var(--red)' : BUFFER_COLOR}"></div></div>
+        <span class="cat-note" class:over={bufferInfo.over} class:under={!bufferInfo.over}>
+          {bufferInfo.over ? `Over by RM ${fmt(bufferActual - bufferPlanned)}` : `RM ${fmt(bufferPlanned - bufferActual)} left · auto from income`}
         </span>
-        {#if adhocGroups.length}
-          <div class="adhoc-sub" class:open={adhocOpen}>
-            {#each adhocGroups as g (g.name)}
-              <div class="item item-link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); adhocLabel = g.name; }} onkeydown={(e) => e.key === 'Enter' && (adhocLabel = g.name)}>
+        {#if bufferGroups.length}
+          <div class="buffer-sub" class:open={bufferOpen}>
+            {#each bufferGroups as g (g.name)}
+              <div class="item item-link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); bufferLabel = g.name; }} onkeydown={(e) => e.key === 'Enter' && (bufferLabel = g.name)}>
                 <span>{g.name} &rsaquo;</span><b>RM {fmt(g.total)}</b>
               </div>
             {/each}
@@ -193,7 +193,7 @@
 {/if}
 
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
-<AdhocDetailSheet open={adhocLabel != null} label={adhocLabel} onClose={() => (adhocLabel = null)} />
+<BufferDetailSheet open={bufferLabel != null} label={bufferLabel} onClose={() => (bufferLabel = null)} />
 <ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
 
 <style>

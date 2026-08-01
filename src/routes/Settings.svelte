@@ -1,17 +1,20 @@
 <script>
   import { template, currentMonth } from '../lib/stores.js';
-  import { computeAdhocPlanned } from '../lib/calc.js';
+  import { computeBufferPlanned } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
+  import { BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
 
   let tmpl = $derived($template);
   let month = $derived($currentMonth);
-  let adhocPlanned = $derived(month ? computeAdhocPlanned(month) : 0);
+  let bufferPlanned = $derived(month ? computeBufferPlanned(month) : 0);
+  let bufferLabels = $derived(tmpl?.bufferLabels ?? BUFFER_LABEL_PRESETS);
   let importing = $state(false);
   let pendingImportFile = $state(null);
   let additionalIncomeAmount = $state('');
+  let newBufferLabel = $state('');
 
   async function addAdditionalIncome() {
     const amt = parseFloat(additionalIncomeAmount);
@@ -85,6 +88,32 @@
     showToast(`Removed ${cat.name}`);
   }
 
+  async function addBufferLabel() {
+    const label = newBufferLabel.trim();
+    if (!label) return;
+    if (bufferLabels.includes(label)) {
+      showToast('That label already exists');
+      return;
+    }
+    await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, label] });
+    newBufferLabel = '';
+  }
+
+  async function renameBufferLabel(index, e) {
+    const value = e.target.value.trim();
+    if (!value) {
+      e.target.value = bufferLabels[index];
+      return;
+    }
+    const updated = bufferLabels.map((l, i) => (i === index ? value : l));
+    await db.template.put({ ...tmpl, bufferLabels: updated });
+  }
+
+  async function deleteBufferLabel(index) {
+    const updated = bufferLabels.filter((_, i) => i !== index);
+    await db.template.put({ ...tmpl, bufferLabels: updated });
+  }
+
   function handlePickFile(e) {
     const file = e.target.files[0];
     e.target.value = '';
@@ -120,7 +149,7 @@
 </script>
 
 <h2 class="title">Commitments setup</h2>
-<p class="sub">Fixed categories reappear every month automatically. Ad-hoc gets one pooled budget.</p>
+<p class="sub">Fixed categories reappear every month automatically. Buffer gets one pooled budget.</p>
 
 {#if month}
   <div class="section-hd" style="margin-top:6px;"><h3>Salary baseline</h3></div>
@@ -135,7 +164,7 @@
       <span style="flex:1; font-size:13.5px; color:var(--lo);">Added so far this month</span>
       <span class="num" style="font-weight:700; color:var(--good);">RM {fmt(month.additionalIncome || 0)}</span>
     </div>
-    <p class="hint" style="margin:2px 0 10px;">For money received mid-cycle (freelance, gift, refund) — counts the same way a start-of-cycle bonus does, flowing straight into Ad-hoc.</p>
+    <p class="hint" style="margin:2px 0 10px;">For money received mid-cycle (freelance, gift, refund) — counts the same way a start-of-cycle bonus does, flowing straight into Buffer.</p>
     <div style="display:flex; gap:8px;">
       <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={additionalIncomeAmount} style="flex:1;" />
       <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px;" onclick={addAdditionalIncome}>Add</button>
@@ -174,15 +203,34 @@
   </div>
   <p class="hint" style="margin-left:4px;">Saving feeds your Goals pool (it's protected from deletion) — change it here and it applies from next month.</p>
 
-  <div class="section-hd"><h3>Ad-hoc</h3><span>auto-computed</span></div>
+  <div class="section-hd"><h3>Buffer</h3><span>auto-computed</span></div>
   <div class="card">
     <div class="set-row" style="border:none;">
-      <span class="dot" style="background:var(--c-adhoc)"></span>
-      <span class="lbl2">This month's Ad-hoc allocation</span>
-      <span class="num" style="font-weight:700; font-size:14px;">{fmt(adhocPlanned)}</span>
+      <span class="dot" style="background:var(--c-buffer)"></span>
+      <span class="lbl2">This month's Buffer allocation</span>
+      <span class="num" style="font-weight:700; font-size:14px;">{fmt(bufferPlanned)}</span>
     </div>
     <p class="hint" style="margin-top:4px;">= Income − fixed commitments (Income already includes rolled-forward balance, Salary, bonus, and additional income). No need to set this — it's recalculated every month.</p>
   </div>
+
+  <div class="section-hd"><h3>Buffer labels</h3><span>tap a name to rename</span></div>
+  <div class="card">
+    {#each bufferLabels as label, i (label)}
+      <div class="set-row">
+        <input class="cat-name-input buffer-label-input" value={label} onchange={(e) => renameBufferLabel(i, e)} />
+        <button class="cat-del" aria-label="Delete label" onclick={() => deleteBufferLabel(i)}>
+          <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    {:else}
+      <p class="hint" style="margin:2px 0;">No labels yet — add one below.</p>
+    {/each}
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <input class="note-input" placeholder="New label, e.g. Gifts" bind:value={newBufferLabel} style="flex:1;" onkeydown={(e) => e.key === 'Enter' && addBufferLabel()} />
+      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px;" onclick={addBufferLabel}>Add</button>
+    </div>
+  </div>
+  <p class="hint" style="margin-left:4px;">These are the quick-pick chips shown when logging a Buffer expense — you can still type a one-off custom label there too.</p>
 {/if}
 
 <div class="section-hd"><h3>Backup &amp; transfer</h3><span>move to another device</span></div>

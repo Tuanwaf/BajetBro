@@ -24,6 +24,7 @@
   let editNote = $state('');
   let editDest = $state(null); // destination category key
   let editPaid = $state(''); // amount paid back to you (reimbursement)
+  let editPaidAbsolute = $state(false); // true once "edit total" or "clear" is tapped -- editPaid becomes the new total instead of an amount to add
 
   // Net cost of a tx = what you actually bore = full paid - paid back to you.
   const txNet = (tx) => round2((tx.amount || 0) - (tx.reimbursed || 0));
@@ -33,10 +34,19 @@
     editAmt = String(tx.amount);
     editNote = tx.note || '';
     editDest = category.key;
-    editPaid = tx.reimbursed ? String(tx.reimbursed) : '';
+    editPaid = ''; // amount to ADD to tx.reimbursed, not the new total
+    editPaidAbsolute = false;
   }
   function cancelEdit() {
     editingIdx = null;
+  }
+  function editPaidTotal(tx) {
+    editPaidAbsolute = true;
+    editPaid = tx.reimbursed ? String(tx.reimbursed) : '0';
+  }
+  function clearPaidTotal() {
+    editPaidAbsolute = true;
+    editPaid = '0';
   }
 
   async function writeCategories(newCats) {
@@ -73,7 +83,10 @@
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
     const note = editNote.trim();
-    const paid = Math.min(Math.max(parseFloat(editPaid) || 0, 0), amt); // 0..full
+    const paidInput = parseFloat(editPaid) || 0;
+    const paid = editPaidAbsolute
+      ? Math.min(Math.max(paidInput, 0), amt) // direct override of the total
+      : Math.min(Math.max((tx.reimbursed || 0) + paidInput, 0), amt); // stacks onto what's already recorded
     const srcKey = category.key;
     const destKey = editDest;
     const oldNet = txNet(tx);
@@ -147,8 +160,22 @@
               <div class="tx-edit">
                 <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
                 <input class="note-input" bind:value={editNote} placeholder="Note (optional)" />
-                <div class="mini-lbl">Paid back to you (bill split / pay first)</div>
-                <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder="0.00" />
+                <div class="mini-lbl paid-hd">
+                  <span>Paid back to you (bill split / pay first)</span>
+                  {#if tx.reimbursed}
+                    <span class="paid-existing">
+                      already RM {fmt(tx.reimbursed)}
+                      <button class="icon-btn tiny" aria-label="Edit paid-back total" onclick={() => editPaidTotal(tx)}>
+                        <svg viewBox="0 0 24 24" fill="none" width="11" height="11"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                      </button>
+                      <button class="icon-btn tiny" aria-label="Clear paid-back amount" onclick={clearPaidTotal}>
+                        <svg viewBox="0 0 24 24" fill="none" width="11" height="11"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </button>
+                    </span>
+                  {/if}
+                </div>
+                <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder={editPaidAbsolute ? 'New total, e.g. 13.50' : tx.reimbursed ? 'Add more, e.g. 1.00' : '0.00'} />
+                {#if editPaidAbsolute}<p class="hint-tiny">Editing the total directly — this replaces the RM {fmt(tx.reimbursed || 0)} already recorded.</p>{/if}
                 <div class="mini-lbl">Move to category</div>
                 <div class="chip-grid">
                   {#each month.categories as c (c.key)}
@@ -242,5 +269,29 @@
     letter-spacing: 0.04em;
     color: var(--dim);
     margin-top: 2px;
+  }
+  .paid-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .paid-existing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: none;
+    font-weight: 600;
+    color: var(--good);
+    flex-shrink: 0;
+  }
+  .icon-btn.tiny {
+    width: 20px;
+    height: 20px;
+  }
+  .hint-tiny {
+    font-size: 10.5px;
+    color: var(--dim);
+    margin: -2px 0 0;
   }
 </style>

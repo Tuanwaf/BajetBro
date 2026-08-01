@@ -3,17 +3,17 @@ export function round2(n) {
 }
 
 // How much each category currently contributes to (or draws from) the
-// shared Ad-hoc pool:
+// shared Buffer pool:
 // - Locked categories use their frozen `lockedLeftover` snapshot (planned -
 //   actual at the moment they were locked) -- that amount was a deliberate,
 //   one-time "I'm done spending here" declaration.
 // - Unlocked categories that are OVER their planned amount draw from the
 //   pool automatically and continuously -- an overspend has *already*
-//   happened, there's no ambiguity to wait on, so Ad-hoc reflects it in
+//   happened, there's no ambiguity to wait on, so Buffer reflects it in
 //   real time (e.g. voluntarily sending extra money to Saving beyond its
-//   plan immediately shrinks Ad-hoc by that same amount).
+//   plan immediately shrinks Buffer by that same amount).
 // - Unlocked categories that are UNDER their planned amount do NOT credit
-//   Ad-hoc yet -- being under budget so far this month doesn't mean the
+//   Buffer yet -- being under budget so far this month doesn't mean the
 //   category is finished (you might just not have bought groceries yet);
 //   that only happens once the category is explicitly locked.
 export function computeLiveAdjustment(month) {
@@ -25,11 +25,11 @@ export function computeLiveAdjustment(month) {
   );
 }
 
-// Ad-hoc's planned figure is based on the comprehensive Income (rolled-
+// Buffer's planned figure is based on the comprehensive Income (rolled-
 // forward balance + salary + bonus + additional income), NOT just this
-// month's Salary -- otherwise Ad-hoc understates what's actually available
+// month's Salary -- otherwise Buffer understates what's actually available
 // and never matches the Income figure shown elsewhere on Home.
-export function computeAdhocPlanned(month) {
+export function computeBufferPlanned(month) {
   const coreSum = (month.categories || []).reduce((s, c) => s + c.planned, 0);
   const totalBalance = computeTotalBalance(month);
   const base = totalBalance != null ? totalBalance : (month.income || 0) + (month.bonus || 0) + (month.additionalIncome || 0);
@@ -39,15 +39,15 @@ export function computeAdhocPlanned(month) {
 // Total "Commitments" figure shown on Home: categories that are either
 // locked or currently over their planned amount count their actual spend
 // instead (that's what's really been drawn from the pool), everyone else
-// counts their planned figure, plus Ad-hoc itself. This always nets back to
+// counts their planned figure, plus Buffer itself. This always nets back to
 // exactly the Income figure, regardless of locking or overspending.
 export function computePlannedTotal(month) {
   const categories = month.categories || [];
   const coreTotal = categories.reduce((s, c) => s + (c.locked || c.actual > c.planned ? c.actual : c.planned), 0);
-  return round2(coreTotal + computeAdhocPlanned(month));
+  return round2(coreTotal + computeBufferPlanned(month));
 }
 
-export function computeAdhocActual(month) {
+export function computeBufferActual(month) {
   return round2((month.extras || []).reduce((s, e) => s + e.actual, 0));
 }
 
@@ -58,7 +58,7 @@ export function computeCoreActual(month) {
 // Live total for the current/open month -- computed from line items, not the
 // frozen `recordedTotal` (which is only authoritative for closed months).
 export function computeSpentTotal(month) {
-  return round2(computeCoreActual(month) + computeAdhocActual(month));
+  return round2(computeCoreActual(month) + computeBufferActual(month));
 }
 
 // Bootstrap-only fallback: this month's own income-minus-spend, for the rare

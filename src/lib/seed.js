@@ -2,6 +2,8 @@
 // planned amounts and no history. Real historical data is restored via
 // Settings -> Import JSON from a personal backup file (never committed).
 
+import { BUFFER_LABEL_PRESETS } from './constants.js';
+
 const CATEGORY_META = [
   { key: 'rent', name: 'Sewa rumah', color: '#6e8bff' },
   { key: 'phone', name: 'Bill Phone', color: '#38c6d9' },
@@ -25,6 +27,7 @@ export async function seedIfNeeded(db) {
       await db.template.put({
         id: 'current',
         categories: CATEGORY_META.map((c) => ({ ...c, planned: 0 })),
+        bufferLabels: [...BUFFER_LABEL_PRESETS],
       });
 
       await db.hutangLedger.put({ id: 'master', initial: 0 });
