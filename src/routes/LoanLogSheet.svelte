@@ -9,9 +9,9 @@
 
   let list = $derived(($loans ?? []).slice().sort((a, b) => new Date(b.date) - new Date(a.date)));
   // Purely informational -- never feeds into any budget/expense calculation.
-  let net = $derived(
-    round2(list.reduce((s, l) => s + (l.direction === 'lent' ? l.amount : -l.amount), 0))
-  );
+  // Kept as two separate totals (not netted against each other) per preference.
+  let lentTotal = $derived(round2(list.filter((l) => l.direction === 'lent').reduce((s, l) => s + l.amount, 0)));
+  let owedTotal = $derived(round2(list.filter((l) => l.direction === 'borrowed').reduce((s, l) => s + l.amount, 0)));
 
   let adding = $state(false);
   let newPerson = $state('');
@@ -91,9 +91,15 @@
     <span style="width:38px;"></span>
   </div>
   <div class="sheet-body">
-    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:{net >= 0 ? 'var(--good)' : 'var(--red)'};">
-      <span style="font-size:13px; color:var(--lo); font-weight:600;">{net >= 0 ? 'Net owed to you' : 'Net you owe'}</span>
-      <span class="num" style="font-size:18px; font-weight:700; color:{net >= 0 ? 'var(--good)' : 'var(--red)'};">RM {fmt(Math.abs(net))}</span>
+    <div class="loan-summary">
+      <div class="card loan-stat" style="border-color:var(--good);">
+        <span style="font-size:12px; color:var(--lo); font-weight:600;">Net you lent</span>
+        <span class="num" style="font-size:18px; font-weight:700; color:var(--good);">RM {fmt(lentTotal)}</span>
+      </div>
+      <div class="card loan-stat" style="border-color:var(--red);">
+        <span style="font-size:12px; color:var(--lo); font-weight:600;">Net you owe</span>
+        <span class="num" style="font-size:18px; font-weight:700; color:var(--red);">RM {fmt(owedTotal)}</span>
+      </div>
     </div>
 
     <div class="field-lbl" style="margin-top:0;">Entries · tap ✎ to fix</div>
@@ -134,21 +140,26 @@
     </div>
 
     {#if adding}
-      <div class="card tx-edit" style="margin-top:12px;">
-        <div class="chip-grid">
-          <button class="chip ghost" class:selected={newDirection === 'lent'} style={newDirection === 'lent' ? 'color:#4ade80' : ''} onclick={() => (newDirection = 'lent')}>Loan to someone</button>
-          <button class="chip ghost" class:selected={newDirection === 'borrowed'} style={newDirection === 'borrowed' ? 'color:#f2a154' : ''} onclick={() => (newDirection = 'borrowed')}>Loan from someone</button>
-        </div>
-        <input class="note-input" bind:value={newPerson} placeholder="Person's name" />
-        <input class="note-input num" bind:value={newAmount} inputmode="decimal" placeholder="0.00" />
-        <input class="note-input" bind:value={newNote} placeholder="Note (optional)" />
-        <div style="display:flex; gap:8px;">
-          <button class="io-btn" style="flex:1;" onclick={() => (adding = false)}>Cancel</button>
-          <button class="save-btn" style="flex:1; margin-top:0;" onclick={commitAdd}>Add</button>
+      <div class="card" style="margin-top:12px;">
+        <div class="tx-edit" style="border-bottom:none; padding-top:0;">
+          <div class="chip-grid">
+            <button class="chip ghost" class:selected={newDirection === 'lent'} style={newDirection === 'lent' ? 'color:#4ade80' : ''} onclick={() => (newDirection = 'lent')}>Loan to someone</button>
+            <button class="chip ghost" class:selected={newDirection === 'borrowed'} style={newDirection === 'borrowed' ? 'color:#f2a154' : ''} onclick={() => (newDirection = 'borrowed')}>Loan from someone</button>
+          </div>
+          <input class="note-input" bind:value={newPerson} placeholder="Person's name" />
+          <input class="note-input num" bind:value={newAmount} inputmode="decimal" placeholder="0.00" />
+          <input class="note-input" bind:value={newNote} placeholder="Note (optional)" />
+          <div style="display:flex; gap:8px;">
+            <button class="io-btn" style="flex:1;" onclick={() => (adding = false)}>Cancel</button>
+            <button class="save-btn" style="flex:1; margin-top:0;" onclick={commitAdd}>Add</button>
+          </div>
         </div>
       </div>
     {:else}
-      <button class="new-goal-btn" style="margin-top:12px;" onclick={startAdd}>+ Log a loan</button>
+      <button class="io-btn add-loan-btn" onclick={startAdd}>
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Log a loan
+      </button>
     {/if}
 
     <p class="hint">Purely a manual record of who owes who — never touches your balance, Spent, or any budget calculation. Delete an entry once it's settled.</p>
@@ -156,6 +167,9 @@
 </div>
 
 <style>
+  .loan-summary { display: flex; gap: 10px; margin-bottom: 14px; }
+  .loan-stat { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .add-loan-btn { margin-top: 12px; background: var(--gold); border-color: var(--gold); color: #241a05; }
   .tx-row { display: flex; align-items: center; gap: 8px; padding: 10px 4px; border-bottom: 1px solid var(--stroke); }
   .tx-row:last-child { border-bottom: none; }
   .tx-row > div:first-child { flex: 1; min-width: 0; }

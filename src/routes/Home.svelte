@@ -1,12 +1,11 @@
 <script>
-  import { currentMonth, template, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans } from '../lib/stores.js';
+  import { currentMonth, template, loans } from '../lib/stores.js';
   import {
     computeBufferPlanned,
     computeBufferActual,
     computeSpentTotal,
     computeTotalRemaining,
     computeTotalBalance,
-    computeTabungHajiTotal2,
     computePlannedTotal,
     computeReimbursedTotal,
     round2,
@@ -24,11 +23,6 @@
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
-  let pots = $derived($hutangPots ?? []);
-  let th = $derived($tabungHaji);
-  let divs = $derived($dividends ?? []);
-  let goalList = $derived($goals ?? []);
-  let sSpends = $derived($savingsSpends ?? []);
 
   let year = $derived(month ? month.key.split('-')[0] : '');
   let bufferPlanned = $derived(month ? computeBufferPlanned(month) : 0);
@@ -37,7 +31,6 @@
   let totalRemaining = $derived(month ? computeTotalRemaining(month) : 0);
   let totalBalance = $derived(month ? computeTotalBalance(month) : null);
   let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
-  let tabungHajiTotal = $derived(th ? computeTabungHajiTotal2(th, pots, goalList, divs, sSpends) : 0);
   let reimbursedTotal = $derived(month ? computeReimbursedTotal(month) : 0);
   let reimburseOpen = $state(false);
 
@@ -53,11 +46,13 @@
   });
   let detailCategoryKey = $state(null);
   let detailCategory = $derived(detailCategoryKey ? month?.categories.find((c) => c.key === detailCategoryKey) : null);
-  // Saving itself still works exactly as before (Settings, Add-entry, the
-  // Goals pool) -- this only hides its row here in favour of the Loan log.
-  let visibleCategories = $derived((month?.categories ?? []).filter((c) => c.key !== 'saving'));
+
+  // Loan log: purely a manual record of who owes who, kept entirely separate
+  // from budget/expense calculations -- shown split (never netted together)
+  // per the user's preference.
   let loanList = $derived($loans ?? []);
-  let loanNet = $derived(round2(loanList.reduce((s, l) => s + (l.direction === 'lent' ? l.amount : -l.amount), 0)));
+  let loanLent = $derived(round2(loanList.filter((l) => l.direction === 'lent').reduce((s, l) => s + l.amount, 0)));
+  let loanOwed = $derived(round2(loanList.filter((l) => l.direction === 'borrowed').reduce((s, l) => s + l.amount, 0)));
   let loanLogOpen = $state(false);
 
   function rowInfo(cat) {
@@ -120,11 +115,18 @@
     </button>
   {/if}
 
-  <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => currentView.set('goals')} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>
+  <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
     <div>
-      <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Tabung Haji</div>
-      <div class="num" style="font-size:19px; font-weight:700; margin-top:2px;">RM {fmt(tabungHajiTotal)}</div>
-      <div style="font-size:11px; color:var(--dim); margin-top:2px;">Deposit + Savings + Dividend</div>
+      <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Loan log</div>
+      {#if loanList.length}
+        <div style="display:flex; gap:14px; margin-top:2px;">
+          <div><span class="num" style="font-size:17px; font-weight:700; color:var(--good);">RM {fmt(loanLent)}</span><div style="font-size:10.5px; color:var(--dim);">you lent</div></div>
+          <div><span class="num" style="font-size:17px; font-weight:700; color:var(--red);">RM {fmt(loanOwed)}</span><div style="font-size:10.5px; color:var(--dim);">you owe</div></div>
+        </div>
+      {:else}
+        <div class="num" style="font-size:19px; font-weight:700; margin-top:2px; color:var(--dim);">No loans logged</div>
+      {/if}
+      <div style="font-size:11px; color:var(--dim); margin-top:6px;">Manual record — doesn't affect your balance</div>
     </div>
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
@@ -134,7 +136,7 @@
     <span>Planned RM {fmt(plannedTotal)}</span>
   </div>
   <div class="card">
-    {#each visibleCategories as cat (cat.key)}
+    {#each month.categories as cat (cat.key)}
       {@const info = rowInfo(cat)}
       {@const leftover = cat.locked ? cat.lockedLeftover : null}
       <div class="cat-row" class:locked-row={cat.locked} onclick={() => (detailCategoryKey = cat.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (detailCategoryKey = cat.key)}>
@@ -149,6 +151,8 @@
             <span class="cat-note" style="color:var(--gold);">
               Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Buffer` : `RM ${fmt(Math.abs(leftover))} pulled from Buffer`}
             </span>
+          {:else if cat.key === 'saving'}
+            <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('goals'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>Feeds your Goals pool &rarr;</span>
           {:else}
             <span class="cat-note" class:over={info.over} class:under={!info.over}>
               {info.over ? `Over by RM ${fmt(cat.actual - cat.planned)}` : `RM ${fmt(cat.planned - cat.actual)} left`}
@@ -164,21 +168,6 @@
         </button>
       </div>
     {/each}
-
-    <div class="cat-row" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
-      <span class="dot" style="background:#7dd3fc"></span>
-      <div class="cat-body">
-        <div class="cat-name-row">
-          <span>Loan log</span>
-          {#if loanList.length}
-            <span class="cat-amt"><b class="num" style="color:{loanNet >= 0 ? 'var(--good)' : 'var(--red)'};">RM {fmt(Math.abs(loanNet))}</b></span>
-          {/if}
-        </div>
-        <span class="cat-note">
-          {#if !loanList.length}No loans logged{:else if loanNet >= 0}Net owed to you &middot; doesn't affect budget{:else}Net you owe &middot; doesn't affect budget{/if}
-        </span>
-      </div>
-    </div>
 
     <div class="cat-row" onclick={() => (bufferOpen = !bufferOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (bufferOpen = !bufferOpen)}>
       <span class="dot" style="background:{BUFFER_COLOR}"></span>
