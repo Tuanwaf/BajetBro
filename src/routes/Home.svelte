@@ -1,5 +1,5 @@
 <script>
-  import { currentMonth, template, loans } from '../lib/stores.js';
+  import { currentMonth, template, loans, userName } from '../lib/stores.js';
   import {
     computeBufferPlanned,
     computeBufferActual,
@@ -59,13 +59,21 @@
   // First-run setup: a fresh install has a template but no month yet, and
   // nothing else in the app can create the first one (End Month only rolls
   // an EXISTING month forward), so Home has to offer it directly.
-  let obIncome = $state('');
-  let obStartingBalance = $state('');
+  // "Income" here means the comprehensive starting figure shown on Home
+  // (Salary + whatever else you're starting with) -- NOT just salary. It
+  // maps to month.startingBalance, which every later month already folds
+  // its own Salary into (see calc.js), so asking for the all-in figure up
+  // front keeps month 1 consistent with every month after it.
+  let obStartMoney = $state('');
+  let obSalary = $state('');
+  let obName = $state('');
 
   async function startFirstMonth() {
-    const income = parseFloat(obIncome);
-    if (!income) return showToast('Enter your salary first');
-    const startingBalance = parseFloat(obStartingBalance) || 0;
+    const salary = parseFloat(obSalary);
+    if (!salary) return showToast('Enter your salary first');
+    // Left blank = no extra on top of salary, i.e. starting money == salary.
+    const startingBalance = obStartMoney.trim() ? parseFloat(obStartMoney) || 0 : salary;
+    const name = obName.trim();
     const now = new Date();
     const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const label = MONTH_NAMES[now.getMonth()];
@@ -74,7 +82,7 @@
       order: now.getMonth() + 1,
       label,
       closed: 0,
-      income,
+      income: salary,
       bonus: 0,
       additionalIncome: 0,
       startingBalance,
@@ -83,6 +91,7 @@
       recordedTotal: 0,
       startedAt: now.toISOString(),
     });
+    if (name) await db.meta.put({ key: 'userName', value: name });
     showToast(`${label} started`);
   }
 
@@ -106,7 +115,7 @@
 </script>
 
 {#if month && tmpl}
-  <h2 class="title">Hey, Wafiq 👋</h2>
+  <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
   <p class="sub">{month.label} {year}</p>
 
   <div class="balance-card">
@@ -232,12 +241,18 @@
   <h2 class="title">Welcome 👋</h2>
   <p class="sub">Let's set up your first month.</p>
   <div class="card">
-    <div class="field-lbl" style="margin-top:0;">Monthly salary</div>
-    <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={obIncome} />
-    <div class="field-lbl">Starting balance <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input num" placeholder="0.00 — money you already have set aside" inputmode="decimal" bind:value={obStartingBalance} />
+    <div class="field-lbl" style="margin-top:0;">Income <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
+    <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={obStartMoney} />
+    <p class="hint" style="margin:4px 2px 14px;">How much money you're starting this month with in total — salary included, plus any savings or leftover you already have. Leave blank if it's just your salary.</p>
+
+    <div class="field-lbl">Salary</div>
+    <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={obSalary} />
+    <p class="hint" style="margin:4px 2px 14px;">Your monthly salary — you can adjust this later in Settings (Income adjusts with it automatically).</p>
+
+    <div class="field-lbl">Your name <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
+    <input class="note-input" placeholder="e.g. Wafiq" bind:value={obName} />
   </div>
-  <p class="hint" style="margin:10px 4px;">Categories and their planned amounts can be set up afterwards in Settings.</p>
+  <p class="hint" style="margin:10px 4px;">Fixed categories (rent, phone bill, etc.) come pre-filled as a template — rename or adjust them anytime in Settings, except Saving, which is tied to the Goals page.</p>
   <button class="save-btn" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
 {:else}
   <p class="sub">Loading...</p>

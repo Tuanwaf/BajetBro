@@ -49,3 +49,5 @@ export const loans = fromLiveQuery(() => db.loans.orderBy('date').reverse().toAr
 // install. Stored per-device, so they never affect anyone else's data.
 export const givingGoalsEnabled = fromLiveQuery(async () => !!(await db.meta.get('givingGoalsEnabled'))?.value, false);
 export const tabungHajiEnabled = fromLiveQuery(async () => !!(await db.meta.get('tabungHajiEnabled'))?.value, false);
+
+export const userName = fromLiveQuery(async () => (await db.meta.get('userName'))?.value || '', '');

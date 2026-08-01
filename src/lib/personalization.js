@@ -5,15 +5,17 @@
 // actually uses them -- they're gated behind a flag stored in this device's
 // own local database. A brand-new install has no such flag and starts
 // without them; a device that already has matching data gets grandfathered
-// in automatically, so nothing changes for an existing user. Both flags can
-// also be flipped by hand in Settings, and both travel with a backup export.
+// in automatically, so nothing changes for an existing user. Both flags
+// travel with a backup export.
 export async function initPersonalizationFlags(db) {
-  const [givingFlag, thFlag, goalList, th, dividendCount] = await Promise.all([
+  const [givingFlag, thFlag, nameFlag, goalList, th, dividendCount, monthCount] = await Promise.all([
     db.meta.get('givingGoalsEnabled'),
     db.meta.get('tabungHajiEnabled'),
+    db.meta.get('userName'),
     db.goals.toArray(),
     db.tabungHaji.get('main'),
     db.dividends.count(),
+    db.months.count(),
   ]);
 
   if (!givingFlag) {
@@ -24,5 +26,12 @@ export async function initPersonalizationFlags(db) {
   if (!thFlag) {
     const hasThData = (th?.fixedDeposit || 0) > 0 || dividendCount > 0;
     if (hasThData) await db.meta.put({ key: 'tabungHajiEnabled', value: true });
+  }
+
+  // The Home greeting used to be hardcoded to "Wafiq". A device that already
+  // has a month predates the onboarding flow that now asks for a name, so it
+  // gets grandfathered in rather than suddenly greeting with no name at all.
+  if (!nameFlag && monthCount > 0) {
+    await db.meta.put({ key: 'userName', value: 'Wafiq' });
   }
 }

@@ -1,6 +1,6 @@
 <script>
   import { template, currentMonth } from '../lib/stores.js';
-  import { computeBufferPlanned } from '../lib/calc.js';
+  import { computeBufferPlanned, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_LABEL_PRESETS } from '../lib/constants.js';
@@ -30,7 +30,15 @@
   async function updateIncome(e) {
     const value = parseFloat(e.target.value) || month.income;
     e.target.value = value.toFixed(2);
-    await db.months.update(month.key, { income: value });
+    // Income (startingBalance) already has this month's Salary folded into
+    // it -- changing Salary alone would leave Income stale/inconsistent, so
+    // shift Income by the same delta rather than touching it independently.
+    const delta = round2(value - month.income);
+    const updates = { income: value };
+    if (month.startingBalance != null && delta) {
+      updates.startingBalance = round2(month.startingBalance + delta);
+    }
+    await db.months.update(month.key, updates);
   }
 
   async function updateCategoryPlanned(index, e) {
