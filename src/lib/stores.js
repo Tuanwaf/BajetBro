@@ -41,3 +41,5 @@ export const savingsSpends = fromLiveQuery(
   () => db.savingsSpends.orderBy('date').reverse().toArray(),
   []
 );
+
+export const loans = fromLiveQuery(() => db.loans.orderBy('date').reverse().toArray(), []);

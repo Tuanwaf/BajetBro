@@ -442,6 +442,9 @@
           {#if alloc < g.target}
             <button class="new-goal-btn" style="margin-top:8px;" onclick={() => goAdd('addgoal', g.id)}>+ Reserve more</button>
           {/if}
+          {#if left > 0.005}
+            <button class="new-goal-btn" style="color:#7dd3fc; border-color:rgba(125,211,252,0.4); margin-top:8px;" onclick={() => goAdd('unreserve', g.id)}>+ Take back to pool</button>
+          {/if}
           <div class="card" style="margin-top:16px; display:flex; align-items:center; justify-content:space-between;">
             <div><div style="font-size:12px; color:var(--lo);">Left in this goal</div><div class="num" style="font-size:19px; font-weight:700; margin-top:2px;">RM {fmt(left)}</div></div>
             <button class="save-btn" style="width:auto; margin:0; padding:12px 16px;" onclick={() => closeGoal(g)}>{left > 0 ? 'Close & return' : 'Close goal'}</button>

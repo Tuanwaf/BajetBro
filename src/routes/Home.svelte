@@ -1,5 +1,5 @@
 <script>
-  import { currentMonth, template, hutangPots, tabungHaji, dividends, goals, savingsSpends } from '../lib/stores.js';
+  import { currentMonth, template, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans } from '../lib/stores.js';
   import {
     computeBufferPlanned,
     computeBufferActual,
@@ -18,6 +18,7 @@
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
   import BufferDetailSheet from './BufferDetailSheet.svelte';
   import ReimbursementsSheet from './ReimbursementsSheet.svelte';
+  import LoanLogSheet from './LoanLogSheet.svelte';
 
   let { onEndMonth } = $props();
 
@@ -52,6 +53,12 @@
   });
   let detailCategoryKey = $state(null);
   let detailCategory = $derived(detailCategoryKey ? month?.categories.find((c) => c.key === detailCategoryKey) : null);
+  // Saving itself still works exactly as before (Settings, Add-entry, the
+  // Goals pool) -- this only hides its row here in favour of the Loan log.
+  let visibleCategories = $derived((month?.categories ?? []).filter((c) => c.key !== 'saving'));
+  let loanList = $derived($loans ?? []);
+  let loanNet = $derived(round2(loanList.reduce((s, l) => s + (l.direction === 'lent' ? l.amount : -l.amount), 0)));
+  let loanLogOpen = $state(false);
 
   function rowInfo(cat) {
     const pct = cat.planned > 0 ? Math.min(100, Math.round((cat.actual / cat.planned) * 100)) : cat.actual > 0 ? 100 : 0;
@@ -127,7 +134,7 @@
     <span>Planned RM {fmt(plannedTotal)}</span>
   </div>
   <div class="card">
-    {#each month.categories as cat (cat.key)}
+    {#each visibleCategories as cat (cat.key)}
       {@const info = rowInfo(cat)}
       {@const leftover = cat.locked ? cat.lockedLeftover : null}
       <div class="cat-row" class:locked-row={cat.locked} onclick={() => (detailCategoryKey = cat.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (detailCategoryKey = cat.key)}>
@@ -142,8 +149,6 @@
             <span class="cat-note" style="color:var(--gold);">
               Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Buffer` : `RM ${fmt(Math.abs(leftover))} pulled from Buffer`}
             </span>
-          {:else if cat.key === 'saving'}
-            <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('goals'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>Feeds your Goals pool &rarr;</span>
           {:else}
             <span class="cat-note" class:over={info.over} class:under={!info.over}>
               {info.over ? `Over by RM ${fmt(cat.actual - cat.planned)}` : `RM ${fmt(cat.planned - cat.actual)} left`}
@@ -159,6 +164,21 @@
         </button>
       </div>
     {/each}
+
+    <div class="cat-row" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
+      <span class="dot" style="background:#7dd3fc"></span>
+      <div class="cat-body">
+        <div class="cat-name-row">
+          <span>Loan log</span>
+          {#if loanList.length}
+            <span class="cat-amt"><b class="num" style="color:{loanNet >= 0 ? 'var(--good)' : 'var(--red)'};">RM {fmt(Math.abs(loanNet))}</b></span>
+          {/if}
+        </div>
+        <span class="cat-note">
+          {#if !loanList.length}No loans logged{:else if loanNet >= 0}Net owed to you &middot; doesn't affect budget{:else}Net you owe &middot; doesn't affect budget{/if}
+        </span>
+      </div>
+    </div>
 
     <div class="cat-row" onclick={() => (bufferOpen = !bufferOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (bufferOpen = !bufferOpen)}>
       <span class="dot" style="background:{BUFFER_COLOR}"></span>
@@ -195,6 +215,7 @@
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
 <BufferDetailSheet open={bufferLabel != null} label={bufferLabel} onClose={() => (bufferLabel = null)} />
 <ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
+<LoanLogSheet open={loanLogOpen} onClose={() => (loanLogOpen = false)} />
 
 <style>
   .lock-btn {

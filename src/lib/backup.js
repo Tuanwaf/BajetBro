@@ -4,7 +4,7 @@ import { migrateV1 } from './migrate.js';
 const SCHEMA_VERSION = 2;
 
 export async function exportBackup() {
-  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends] = await Promise.all([
+  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans] = await Promise.all([
     db.template.get('current'),
     db.months.toArray(),
     db.hutangPots.toArray(),
@@ -12,6 +12,7 @@ export async function exportBackup() {
     db.dividends.toArray(),
     db.goals.toArray(),
     db.savingsSpends.toArray(),
+    db.loans.toArray(),
   ]);
 
   const payload = {
@@ -24,6 +25,7 @@ export async function exportBackup() {
     dividends,
     goals,
     savingsSpends,
+    loans,
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -64,6 +66,8 @@ export async function importBackup(file) {
     pots = migrated.hutangPots;
   }
 
+  const loans = data.loans || [];
+
   await db.transaction(
     'rw',
     db.template,
@@ -73,6 +77,7 @@ export async function importBackup(file) {
     db.dividends,
     db.goals,
     db.savingsSpends,
+    db.loans,
     db.meta,
     async () => {
       await Promise.all([
@@ -82,6 +87,7 @@ export async function importBackup(file) {
         db.dividends.clear(),
         db.goals.clear(),
         db.savingsSpends.clear(),
+        db.loans.clear(),
       ]);
 
       if (data.template) await db.template.put(data.template);
@@ -91,6 +97,7 @@ export async function importBackup(file) {
       if (data.dividends?.length) await db.dividends.bulkPut(data.dividends);
       if (goals.length) await db.goals.bulkPut(goals);
       if (savingsSpends.length) await db.savingsSpends.bulkAdd(savingsSpends.map(({ id, ...rest }) => rest));
+      if (loans.length) await db.loans.bulkAdd(loans.map(({ id, ...rest }) => rest));
 
       // A restored backup already has real data -- mark seeded so the
       // historical seed script never overwrites it on a future load.

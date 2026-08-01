@@ -40,4 +40,20 @@ db.version(2)
     if (hutangPots.length) await tx.table('hutangPots').bulkPut(hutangPots);
   });
 
+// v3 -- Loan log: a manual, freestanding record of money lent to or borrowed
+// from other people. Purely informational -- never touches budget/expense
+// calculations, so it needs no migration of existing data.
+db.version(3).stores({
+  template: 'id',
+  months: '&key, order, closed',
+  hutangPots: '&month',
+  hutangLedger: 'id',
+  tabungHaji: 'id',
+  dividends: '++id, date',
+  goals: '&id, order',
+  savingsSpends: '++id, date',
+  loans: '++id, date',
+  meta: 'key',
+});
+
 export default db;

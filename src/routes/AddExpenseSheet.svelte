@@ -163,6 +163,21 @@
       return;
     }
 
+    if (selectedCatKey === 'unreserve') {
+      if (!selectedGoal) return showToast('Pick a goal first');
+      const reserveLeft = goalReserveLeft(selectedGoal);
+      const applied = Math.min(amt, reserveLeft);
+      if (applied <= 0) return showToast('Nothing reserved to take back');
+      // A negative allocation -- reduces goalAllocated (and so goalReserveLeft)
+      // without touching spends, then flows straight back into Ready to allocate.
+      const allocations = [...(selectedGoal.allocations || []), { date: now, amount: -applied }];
+      await db.goals.update(selectedGoal.id, { allocations });
+      showToast(`Took back RM ${fmt(applied)} from ${selectedGoal.label}${applied < amt ? ' (capped to what was reserved)' : ''}`);
+      onClose();
+      currentView.set('goals');
+      return;
+    }
+
     if (selectedCatKey === 'spend') {
       await db.savingsSpends.add({ date: now, label: note || 'Personal spend', amount: amt });
       showToast(`Spent RM ${fmt(amt)} from savings`);
@@ -271,6 +286,9 @@
       <button class="chip" class:selected={selectedCatKey === 'spendgoal'} style="color:#3ddcb0" onclick={() => selectCat('spendgoal')}>
         <span class="dot" style="background:#3ddcb0"></span>Spend on a goal
       </button>
+      <button class="chip" class:selected={selectedCatKey === 'unreserve'} style="color:#7dd3fc" onclick={() => selectCat('unreserve')}>
+        <span class="dot" style="background:#7dd3fc"></span>Take back to pool
+      </button>
       <button class="chip" class:selected={selectedCatKey === 'spend'} style="color:#f2a154" onclick={() => selectCat('spend')}>
         <span class="dot" style="background:#f2a154"></span>Spend from savings
       </button>
@@ -296,16 +314,16 @@
       {/if}
     {/if}
 
-    {#if selectedCatKey === 'addgoal' || selectedCatKey === 'spendgoal'}
-      <div class="field-lbl">{selectedCatKey === 'spendgoal' ? 'Spend from which goal?' : 'Which goal?'}</div>
+    {#if selectedCatKey === 'addgoal' || selectedCatKey === 'spendgoal' || selectedCatKey === 'unreserve'}
+      <div class="field-lbl">{selectedCatKey === 'spendgoal' ? 'Spend from which goal?' : selectedCatKey === 'unreserve' ? 'Take back from which goal?' : 'Which goal?'}</div>
       <div class="chip-grid">
-        {#each (selectedCatKey === 'spendgoal' ? spendGoals : goalList) as g (g.id)}
+        {#each (selectedCatKey === 'addgoal' ? goalList : spendGoals) as g (g.id)}
           <button class="chip ghost" class:selected={selectedGoalId === g.id} style={selectedGoalId === g.id ? `color:${g.color}` : ''} onclick={() => selectGoal(g)}>
             <span class="dot" style="background:{g.color}"></span>{g.label}
           </button>
         {:else}
           <p class="hint" style="margin:0 0 6px;">
-            {selectedCatKey === 'spendgoal' ? 'No goals with money set aside yet.' : 'No goals yet — create one on the Goals tab.'}
+            {selectedCatKey === 'addgoal' ? 'No goals yet — create one on the Goals tab.' : 'No goals with money set aside yet.'}
           </p>
         {/each}
       </div>
@@ -326,6 +344,10 @@
           </div>
         {/if}
         <p class="hint">Comes out of money set aside for {selectedGoal.label} — it won't touch this month's budget or History.</p>
+      {/if}
+
+      {#if selectedCatKey === 'unreserve' && selectedGoal}
+        <p class="hint">Un-reserves this amount from {selectedGoal.label} back into Ready to allocate — for changing your mind, not for spending on the goal's purpose (use "Spend on a goal" for that). Capped at RM {fmt(goalReserveLeft(selectedGoal))} still reserved.</p>
       {/if}
     {/if}
 
