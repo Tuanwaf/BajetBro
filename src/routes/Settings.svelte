@@ -15,7 +15,29 @@
   let importing = $state(false);
   let pendingImportFile = $state(null);
   let additionalIncomeAmount = $state('');
+  let additionalIncomeNote = $state('');
   let newBufferLabel = $state('');
+
+  // additionalIncome itself stays the plain summed total everywhere else in
+  // the app (calc.js, History, etc. all just read a number) -- this log is
+  // the editable source of truth going forward. A month that already had a
+  // total before this log existed gets a single synthetic legacy entry so
+  // it's immediately editable/deletable instead of silently stuck.
+  let additionalIncomeEntries = $derived.by(() => {
+    if (!month) return [];
+    if (month.additionalIncomeLog?.length) return month.additionalIncomeLog;
+    if (month.additionalIncome > 0) return [{ date: month.startedAt || null, amount: month.additionalIncome, legacy: true }];
+    return [];
+  });
+
+  let editingAiIdx = $state(null);
+  let editAiAmount = $state('');
+  let editAiNote = $state('');
+
+  async function saveAdditionalIncomeLog(log) {
+    const total = round2(log.reduce((s, e) => s + (e.amount || 0), 0));
+    await db.months.update(month.key, { additionalIncomeLog: log, additionalIncome: total });
+  }
 
   async function updateName(e) {
     const value = e.target.value.trim();
@@ -28,9 +50,36 @@
       showToast('Enter an amount first');
       return;
     }
-    await db.months.update(month.key, { additionalIncome: (month.additionalIncome || 0) + amt });
+    const log = [...additionalIncomeEntries, { date: new Date().toISOString(), amount: amt, note: additionalIncomeNote.trim() || undefined }];
+    await saveAdditionalIncomeLog(log);
     additionalIncomeAmount = '';
+    additionalIncomeNote = '';
     showToast(`Added RM ${fmt(amt)} additional income`);
+  }
+
+  function startEditAi(idx) {
+    editingAiIdx = idx;
+    editAiAmount = String(additionalIncomeEntries[idx].amount);
+    editAiNote = additionalIncomeEntries[idx].note || '';
+  }
+  async function commitEditAi() {
+    const amt = parseFloat(editAiAmount);
+    if (!amt) return showToast('Enter an amount first');
+    const log = additionalIncomeEntries.map((e, i) =>
+      i === editingAiIdx ? { date: e.date, amount: amt, note: editAiNote.trim() || undefined } : e
+    );
+    await saveAdditionalIncomeLog(log);
+    editingAiIdx = null;
+  }
+  async function deleteAi(idx) {
+    const log = additionalIncomeEntries.filter((_, i) => i !== idx);
+    await saveAdditionalIncomeLog(log);
+    showToast('Removed');
+  }
+  function formatAiDate(iso) {
+    if (!iso) return 'Before tracking';
+    const d = new Date(iso);
+    return isNaN(d) ? 'Before tracking' : d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   async function updateIncome(e) {
@@ -185,10 +234,39 @@
       <span class="num" style="font-weight:700; color:var(--good);">RM {fmt(month.additionalIncome || 0)}</span>
     </div>
     <p class="hint" style="margin:2px 0 10px;">For money received mid-cycle (freelance, gift, refund) — counts the same way a start-of-cycle bonus does, flowing straight into Buffer.</p>
-    <div style="display:flex; gap:8px;">
+
+    {#each additionalIncomeEntries as e, i (i)}
+      {#if editingAiIdx === i}
+        <div class="tx-edit">
+          <input class="note-input num" bind:value={editAiAmount} inputmode="decimal" placeholder="0.00" />
+          <input class="note-input" bind:value={editAiNote} placeholder="Note (optional)" />
+          <div style="display:flex; gap:8px;">
+            <button class="io-btn" style="flex:1;" onclick={() => (editingAiIdx = null)}>Cancel</button>
+            <button class="save-btn" style="flex:1; margin-top:0;" onclick={commitEditAi}>Save</button>
+          </div>
+        </div>
+      {:else}
+        <div class="tx-row">
+          <div>
+            <div class="tx-note-main">{e.note || 'Additional income'}</div>
+            <div class="tx-date">{formatAiDate(e.date)}</div>
+          </div>
+          <span class="num tx-amt" style="color:var(--good);">+RM {fmt(e.amount)}</span>
+          <button class="icon-btn small" aria-label="Edit additional income" onclick={() => startEditAi(i)}>
+            <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn small" aria-label="Delete additional income" onclick={() => deleteAi(i)}>
+            <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      {/if}
+    {/each}
+
+    <div style="display:flex; gap:8px; margin-top:10px;">
       <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={additionalIncomeAmount} style="flex:1;" />
       <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px;" onclick={addAdditionalIncome}>Add</button>
     </div>
+    <input class="note-input" placeholder="Note (optional)" bind:value={additionalIncomeNote} style="margin-top:8px;" />
   </div>
 {/if}
 
@@ -319,4 +397,14 @@
     border-bottom: 1px solid var(--stroke);
   }
   .save-btn.danger { background: var(--red); color: #2a0709; }
+  .tx-row { display: flex; align-items: center; gap: 8px; padding: 10px 4px; border-bottom: 1px solid var(--stroke); }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-row > div:first-child { flex: 1; min-width: 0; }
+  .tx-note-main { font-size: 13.5px; font-weight: 600; color: var(--hi); }
+  .tx-date { font-size: 11px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }
+  .tx-amt { font-weight: 600; }
+  .icon-btn.small { width: 28px; height: 28px; }
+  .icon-btn.small + .icon-btn.small { margin-left: 6px; }
+  .tx-edit { padding: 10px 4px; border-bottom: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 8px; }
+  .tx-edit:last-child { border-bottom: none; }
 </style>
