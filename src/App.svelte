@@ -61,32 +61,6 @@
     };
   });
 
-  // The fixed tab bar's bottom offset is normally just 0 (position: fixed
-  // handles it). But the FIRST time the on-screen keyboard opens after a
-  // fresh load, iOS/Android can misjudge that offset against the visual
-  // viewport and shove the bar out of place -- it self-corrects on every
-  // later keyboard open, which is the known signature of this being a
-  // first-paint viewport staleness bug rather than anything content-driven.
-  // Recomputing it explicitly from visualViewport on every change sidesteps
-  // that staleness instead of relying on the browser's own recovery.
-  function syncViewportOffset() {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const offset = window.innerHeight - (vv.height + vv.offsetTop);
-    document.documentElement.style.setProperty('--vv-bottom-offset', `${Math.max(0, Math.round(offset))}px`);
-  }
-
-  $effect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    syncViewportOffset();
-    vv.addEventListener('resize', syncViewportOffset);
-    vv.addEventListener('scroll', syncViewportOffset);
-    return () => {
-      vv.removeEventListener('resize', syncViewportOffset);
-      vv.removeEventListener('scroll', syncViewportOffset);
-    };
-  });
 </script>
 
 <div class="app-shell">
