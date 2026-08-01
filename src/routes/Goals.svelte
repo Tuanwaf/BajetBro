@@ -1,5 +1,5 @@
 <script>
-  import { hutangPots, goals, tabungHaji, dividends, savingsSpends } from '../lib/stores.js';
+  import { hutangPots, goals, tabungHaji, dividends, savingsSpends, currentMonth } from '../lib/stores.js';
   import {
     computeReadyToAllocate,
     computeOpenSavingsReserve,
@@ -23,6 +23,7 @@
   let th = $derived($tabungHaji);
   let divs = $derived($dividends ?? []);
   let spends = $derived($savingsSpends ?? []);
+  let month = $derived($currentMonth);
 
   let activeGoals = $derived(goalList.filter((g) => !g.closed));
   let closedGoals = $derived(goalList.filter((g) => g.closed));
@@ -99,6 +100,39 @@
     const spendsArr = g.spends.map((s, i) => (i === editSpendIdx ? { ...s, label: editSpendLabel.trim() || 'Spend', amount: amt } : s));
     await db.goals.update(g.id, { spends: spendsArr });
     editSpendIdx = null;
+  }
+
+  // inline allocation ("Contributions" / "Reserved from pool") edit -- for
+  // giving goals only the current cycle's own entries are editable, since an
+  // allocation there is money already given away for good; reaching back to
+  // edit an older, already-settled entry would retroactively change today's
+  // Ready to allocate for a transaction that's long done. Savings goals have
+  // no such restriction -- that money is still sitting in your pool/TH either
+  // way, so correcting an old reservation just moves it between "reserved"
+  // and "ready to allocate", both of which are still genuinely yours.
+  function isCurrentCycle(dateStr) {
+    return !!month && typeof dateStr === 'string' && dateStr.slice(0, 7) === month.key;
+  }
+  function canEditAlloc(g, a) {
+    return g.type !== 'giving' || isCurrentCycle(a.date);
+  }
+  let editAllocIdx = $state(null);
+  let editAllocAmt = $state('');
+  function startEditAlloc(g, idx) {
+    editAllocIdx = idx;
+    editAllocAmt = String(g.allocations[idx].amount);
+  }
+  async function saveEditAlloc(g) {
+    const amt = parseFloat(editAllocAmt);
+    if (!amt) return showToast('Enter an amount first');
+    const allocations = g.allocations.map((a, i) => (i === editAllocIdx ? { ...a, amount: amt } : a));
+    await db.goals.update(g.id, { allocations });
+    editAllocIdx = null;
+  }
+  async function deleteAlloc(g, idx) {
+    const allocations = g.allocations.filter((_, i) => i !== idx);
+    await db.goals.update(g.id, { allocations });
+    showToast('Removed');
   }
 
   // ---------- goal edit form ----------
@@ -387,8 +421,33 @@
         {#if g.type === 'giving'}
           <div class="field-lbl" style="margin-top:0;">Contributions</div>
           <div class="card">
-            {#each g.allocations ?? [] as a}
-              <div class="set-row" style="padding:10px 4px;"><span style="flex:1; font-size:13px;">{fmtDate(a.date)}</span><span class="num" style="font-size:13px;">RM {fmt(a.amount)}</span></div>
+            {#each g.allocations ?? [] as a, i}
+              {#if editAllocIdx === i}
+                <div class="dividend-edit">
+                  <input class="note-input num" bind:value={editAllocAmt} inputmode="decimal" placeholder="0.00" />
+                  <div style="display:flex; gap:8px;">
+                    <button class="io-btn" style="flex:1;" onclick={() => (editAllocIdx = null)}>Cancel</button>
+                    <button class="save-btn" style="flex:1; margin-top:0;" onclick={() => saveEditAlloc(g)}>Save</button>
+                  </div>
+                </div>
+              {:else}
+                <div class="set-row" style="padding:10px 4px;">
+                  <span style="flex:1; font-size:13px;">{fmtDate(a.date)}</span>
+                  <span class="num" style="font-size:13px;">RM {fmt(a.amount)}</span>
+                  {#if canEditAlloc(g, a)}
+                    <button class="icon-btn small" aria-label="Edit contribution" onclick={() => startEditAlloc(g, i)}>
+                      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                    </button>
+                    <button class="icon-btn small" aria-label="Delete contribution" onclick={() => deleteAlloc(g, i)}>
+                      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                  {:else}
+                    <span class="icon-btn small" style="color:var(--dim); cursor:default;" aria-label="Only this cycle's contributions can be edited" title="Only this cycle's contributions can be edited">
+                      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    </span>
+                  {/if}
+                </div>
+              {/if}
             {:else}
               <p class="hint" style="margin:2px 0;">Nothing added yet.</p>
             {/each}
@@ -401,8 +460,27 @@
         {:else}
           <div class="field-lbl" style="margin-top:0;">Reserved from pool</div>
           <div class="card">
-            {#each g.allocations ?? [] as a}
-              <div class="set-row" style="padding:10px 4px;"><span style="flex:1; font-size:13px;">{fmtDate(a.date)}</span><span class="num" style="font-size:13px;">RM {fmt(a.amount)}</span></div>
+            {#each g.allocations ?? [] as a, i}
+              {#if editAllocIdx === i}
+                <div class="dividend-edit">
+                  <input class="note-input num" bind:value={editAllocAmt} inputmode="decimal" placeholder="0.00" />
+                  <div style="display:flex; gap:8px;">
+                    <button class="io-btn" style="flex:1;" onclick={() => (editAllocIdx = null)}>Cancel</button>
+                    <button class="save-btn" style="flex:1; margin-top:0;" onclick={() => saveEditAlloc(g)}>Save</button>
+                  </div>
+                </div>
+              {:else}
+                <div class="set-row" style="padding:10px 4px;">
+                  <span style="flex:1; font-size:13px;">{fmtDate(a.date)}</span>
+                  <span class="num" style="font-size:13px;">RM {fmt(a.amount)}</span>
+                  <button class="icon-btn small" aria-label="Edit reservation" onclick={() => startEditAlloc(g, i)}>
+                    <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                  </button>
+                  <button class="icon-btn small" aria-label="Delete reservation" onclick={() => deleteAlloc(g, i)}>
+                    <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </div>
+              {/if}
             {:else}
               <p class="hint" style="margin:2px 0;">Nothing reserved yet.</p>
             {/each}
