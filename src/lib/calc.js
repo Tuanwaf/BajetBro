@@ -1,4 +1,3 @@
-// probe: trivial comment to test the file-popup issue
 export function round2(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
