@@ -1,5 +1,5 @@
 <script>
-  import { template, currentMonth } from '../lib/stores.js';
+  import { template, currentMonth, userName } from '../lib/stores.js';
   import { computeBufferPlanned, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
@@ -15,6 +15,11 @@
   let pendingImportFile = $state(null);
   let additionalIncomeAmount = $state('');
   let newBufferLabel = $state('');
+
+  async function updateName(e) {
+    const value = e.target.value.trim();
+    await db.meta.put({ key: 'userName', value });
+  }
 
   async function addAdditionalIncome() {
     const amt = parseFloat(additionalIncomeAmount);
@@ -158,6 +163,12 @@
 
 <h2 class="title">Commitments setup</h2>
 <p class="sub">Fixed categories reappear every month automatically. Buffer gets one pooled budget.</p>
+
+<div class="section-hd" style="margin-top:6px;"><h3>Profile</h3></div>
+<div class="card" style="display:flex; align-items:center; justify-content:space-between;">
+  <span style="font-size:13.5px; color:var(--lo);">Your name</span>
+  <input class="cat-name-input" style="text-align:right; flex:0 1 auto; width:140px;" value={$userName} placeholder="e.g. Wafiq" onchange={updateName} />
+</div>
 
 {#if month}
   <div class="section-hd" style="margin-top:6px;"><h3>Salary baseline</h3></div>

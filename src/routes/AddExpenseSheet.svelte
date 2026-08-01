@@ -133,6 +133,11 @@
       const label = selectedBufferLabel === 'custom' ? customBufferLabel.trim() || 'Misc' : selectedBufferLabel || 'Misc';
       const extras = [...(month.extras || []), { name: label, actual: amt, date: now, note: note || undefined }];
       await db.months.update(month.key, { extras });
+      // A new custom label becomes a permanent quick-pick chip (and shows up
+      // in Settings), same as if it had been added there directly.
+      if (selectedBufferLabel === 'custom' && label && !bufferLabels.includes(label)) {
+        await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, label] });
+      }
       showToast(`Saved RM ${fmt(amt)} · Buffer / ${label}`);
       onClose();
       currentView.set('home');
