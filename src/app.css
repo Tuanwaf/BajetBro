@@ -258,7 +258,7 @@ h2.title {
 
 /* ---------- tab bar ---------- */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0;
+  position: fixed; left: 0; right: 0; bottom: var(--vv-bottom-offset, 0px);
   height: 84px;
   background: rgba(27, 31, 42, 0.86);
   backdrop-filter: blur(18px);
