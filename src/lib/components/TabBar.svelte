@@ -1,7 +1,7 @@
 <script>
   import { currentView } from '../viewStore.js';
 
-  let { onAddClick } = $props();
+  let { onAddClick, hidden = false } = $props();
 
   const tabs = [
     { id: 'home', label: 'Home' },
@@ -13,7 +13,7 @@
   ];
 </script>
 
-<div class="tabbar">
+<div class="tabbar" class:kb-hidden={hidden}>
   {#each tabs as t (t.id)}
     <button class="tab" data-guide="tab-{t.id}" class:active={$currentView === t.id} onclick={() => currentView.set(t.id)}>
       {#if t.id === 'home'}

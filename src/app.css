@@ -268,6 +268,14 @@ h2.title {
   padding-top: 10px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 40;
+  transition: transform 0.18s ease;
+}
+/* Hidden while a text field has focus -- see App.svelte. Sidesteps iOS
+   Safari's unreliable position:fixed-vs-keyboard behavior entirely instead
+   of fighting it with viewport math. */
+.tabbar.kb-hidden {
+  transform: translateY(120%);
+  pointer-events: none;
 }
 .tab {
   flex: 1;

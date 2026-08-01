@@ -14,6 +14,25 @@
 
   let endMonthSheetOpen = $state(false);
   let viewEl = $state(null);
+  let keyboardOpen = $state(false);
+
+  // iOS Safari doesn't reliably keep position:fixed elements pinned to the
+  // visible area once the on-screen keyboard covers part of the screen (a
+  // longstanding platform limitation, not a one-off glitch) -- fighting it
+  // with viewport math backfired before. Hiding the tab bar while a text
+  // field has focus sidesteps the whole problem instead of chasing it.
+  const NON_TEXT_INPUT_TYPES = new Set(['checkbox', 'radio', 'file', 'range', 'button', 'submit']);
+  function isTextField(el) {
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    return el.tagName === 'INPUT' && !NON_TEXT_INPUT_TYPES.has(el.type);
+  }
+  function handleFocusIn(e) {
+    if (isTextField(e.target)) keyboardOpen = true;
+  }
+  function handleFocusOut(e) {
+    if (isTextField(e.target)) keyboardOpen = false;
+  }
 
   function closeAdd() {
     addOpen.set(false);
@@ -61,6 +80,14 @@
     };
   });
 
+  $effect(() => {
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
+    };
+  });
 </script>
 
 <div class="app-shell">
@@ -81,7 +108,7 @@
 
   <div class="status-bar-blur"></div>
 
-  <TabBar onAddClick={handleAddClick} />
+  <TabBar onAddClick={handleAddClick} hidden={keyboardOpen} />
 
   <AddExpenseSheet open={$addOpen} intent={$addIntent} onClose={closeAdd} />
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
