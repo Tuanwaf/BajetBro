@@ -4,6 +4,7 @@ import App from './App.svelte';
 import db from './lib/db.js';
 import { seedIfNeeded } from './lib/seed.js';
 import { initPersonalizationFlags } from './lib/personalization.js';
+import { startTour } from './lib/tour.js';
 
 async function init() {
   if (navigator.storage?.persist) {
@@ -19,6 +20,12 @@ async function init() {
   mount(App, {
     target: document.getElementById('app'),
   });
+
+  // A genuinely fresh install (personalization migration found nothing to
+  // grandfather it against) starts the guided tour automatically.
+  if (!(await db.meta.get('tourCompleted'))) {
+    startTour();
+  }
 
   // Keep the splash up briefly even on a fast/warm load, so its pulse is
   // actually visible rather than flashing past in a frame or two.

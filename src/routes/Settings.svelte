@@ -6,6 +6,7 @@
   import { BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
+  import { startTour } from '../lib/tour.js';
 
   let tmpl = $derived($template);
   let month = $derived($currentMonth);
@@ -172,7 +173,7 @@
 
 {#if month}
   <div class="section-hd" style="margin-top:6px;"><h3>Salary baseline</h3></div>
-  <div class="card" style="display:flex; align-items:center; justify-content:space-between;">
+  <div class="card" data-guide="settings-salary" style="display:flex; align-items:center; justify-content:space-between;">
     <span style="font-size:13.5px; color:var(--lo);">Monthly salary</span>
     <input class="set-amt" style="width:100px;" value={month.income.toFixed(2)} onchange={updateIncome} />
   </div>
@@ -193,7 +194,7 @@
 
 {#if tmpl}
   <div class="section-hd"><h3>Fixed categories</h3><span>tap a name to rename</span></div>
-  <div class="card">
+  <div class="card" data-guide="settings-categories">
     {#each tmpl.categories as cat, i (cat.key)}
       <div class="set-row">
         <span class="dot" style="background:{cat.color}"></span>
@@ -223,7 +224,7 @@
   <p class="hint" style="margin-left:4px;">Saving feeds your Goals pool (it's protected from deletion) — change it here and it applies from next month.</p>
 
   <div class="section-hd"><h3>Buffer</h3><span>auto-computed</span></div>
-  <div class="card">
+  <div class="card" data-guide="settings-buffer">
     <div class="set-row" style="border:none;">
       <span class="dot" style="background:var(--c-buffer)"></span>
       <span class="lbl2">This month's Buffer allocation</span>
@@ -233,7 +234,7 @@
   </div>
 
   <div class="section-hd"><h3>Buffer labels</h3><span>tap a name to rename</span></div>
-  <div class="card">
+  <div class="card" data-guide="settings-buffer-labels">
     {#each bufferLabels as label, i (label)}
       <div class="set-row">
         <input class="cat-name-input buffer-label-input" value={label} onchange={(e) => renameBufferLabel(i, e)} />
@@ -253,7 +254,7 @@
 {/if}
 
 <div class="section-hd"><h3>Backup &amp; transfer</h3><span>move to another device</span></div>
-<div class="card" style="display:flex; flex-direction:column; gap:10px;">
+<div class="card" data-guide="settings-backup" style="display:flex; flex-direction:column; gap:10px;">
   <button class="io-btn" onclick={handleExport}>
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 15V3M7 8l5-5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Export backup (.json)
@@ -265,6 +266,12 @@
   </label>
   <p class="hint">Everything — commitments, this cycle, goals, dividends — bundles into one file. Import it on your next device to pick up exactly where you left off.</p>
 </div>
+
+<div class="section-hd"><h3>Help</h3></div>
+<button class="io-btn" onclick={startTour}>
+  <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 9a2.5 2.5 0 0 1 4.8 1c0 1.5-2.3 1.8-2.3 3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="16.6" r="0.9" fill="currentColor"/></svg>
+  Replay the guided tour
+</button>
 
 {#if pendingImportFile}
   <div class="card" style="margin-top:12px; border-color:var(--red);">

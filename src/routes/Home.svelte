@@ -118,7 +118,7 @@
   <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
   <p class="sub">{month.label} {year}</p>
 
-  <div class="balance-card">
+  <div class="balance-card" data-guide="balance-remaining">
     <div class="balance-top">
       <div class="lbl">Remaining this month</div>
       <span class="pill" class:good={totalRemaining >= 0} class:bad={totalRemaining < 0}>
@@ -126,7 +126,7 @@
       </span>
     </div>
     <div class="balance-amt"><span class="cur">RM</span>{fmt(totalRemaining)}</div>
-    <div class="balance-row">
+    <div class="balance-row" data-guide="balance-stats">
       <div class="stat">
         <div class="k">Income</div>
         <div class="v num">
@@ -155,7 +155,7 @@
     </button>
   {/if}
 
-  <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
+  <div class="card" data-guide="loan-log-card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
     <div>
       <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Loan log</div>
       {#if loanList.length}
@@ -171,7 +171,7 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
 
-  <div class="section-hd">
+  <div class="section-hd" data-guide="commitments-section">
     <h3>Commitments</h3>
     <span>Planned RM {fmt(plannedTotal)}</span>
   </div>
@@ -209,7 +209,7 @@
       </div>
     {/each}
 
-    <div class="cat-row" onclick={() => (bufferOpen = !bufferOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (bufferOpen = !bufferOpen)}>
+    <div class="cat-row" data-guide="buffer-row" onclick={() => (bufferOpen = !bufferOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (bufferOpen = !bufferOpen)}>
       <span class="dot" style="background:{BUFFER_COLOR}"></span>
       <div class="cat-body">
         <div class="cat-name-row">
@@ -242,18 +242,18 @@
   <p class="sub">Let's set up your first month.</p>
   <div class="card">
     <div class="field-lbl" style="margin-top:0;">Income <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={obStartMoney} />
+    <input class="note-input num" data-guide="ob-income" placeholder="0.00" inputmode="decimal" bind:value={obStartMoney} />
     <p class="hint" style="margin:4px 2px 14px;">How much money you're starting this month with in total — salary included, plus any savings or leftover you already have. Leave blank if it's just your salary.</p>
 
     <div class="field-lbl">Salary</div>
-    <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={obSalary} />
+    <input class="note-input num" data-guide="ob-salary" placeholder="0.00" inputmode="decimal" bind:value={obSalary} />
     <p class="hint" style="margin:4px 2px 14px;">Your monthly salary — you can adjust this later in Settings (Income adjusts with it automatically).</p>
 
     <div class="field-lbl">Your name <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input" placeholder="e.g. Wafiq" bind:value={obName} />
+    <input class="note-input" data-guide="ob-name" placeholder="e.g. Wafiq" bind:value={obName} />
   </div>
   <p class="hint" style="margin:10px 4px;">Fixed categories (rent, phone bill, etc.) come pre-filled as a template — rename or adjust them anytime in Settings, except Saving, which is tied to the Goals page.</p>
-  <button class="save-btn" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
+  <button class="save-btn" data-guide="ob-start" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
 {:else}
   <p class="sub">Loading...</p>
 {/if}

@@ -93,7 +93,7 @@
 <h2 class="title">History</h2>
 <p class="sub">Every month, rolled forward automatically.</p>
 
-<div class="card" style="margin-bottom:18px;">
+<div class="card" data-guide="history-ring" style="margin-bottom:18px;">
   <div class="ring-wrap">
     <div class="ring" style={ringGradient ? `background:conic-gradient(${ringGradient})` : 'background:var(--panel-2)'}>
       <div class="mid"><div class="k">Spent</div><div class="v">{fmt(ringTotal)}</div></div>
@@ -111,7 +111,7 @@
 </div>
 
 <div class="section-hd"><h3>Monthly log</h3><span>Income vs spent</span></div>
-<div class="card">
+<div class="card" data-guide="history-log">
   {#each allMonths as m (m.key)}
     <div class="month-row" class:open={expandedKey === m.key} onclick={() => toggle(m.key)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && toggle(m.key)}>
       <div class="month-row-info">

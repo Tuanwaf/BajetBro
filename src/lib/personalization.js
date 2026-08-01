@@ -8,10 +8,11 @@
 // in automatically, so nothing changes for an existing user. Both flags
 // travel with a backup export.
 export async function initPersonalizationFlags(db) {
-  const [givingFlag, thFlag, nameFlag, goalList, th, dividendCount, monthCount] = await Promise.all([
+  const [givingFlag, thFlag, nameFlag, tourFlag, goalList, th, dividendCount, monthCount] = await Promise.all([
     db.meta.get('givingGoalsEnabled'),
     db.meta.get('tabungHajiEnabled'),
     db.meta.get('userName'),
+    db.meta.get('tourCompleted'),
     db.goals.toArray(),
     db.tabungHaji.get('main'),
     db.dividends.count(),
@@ -33,5 +34,12 @@ export async function initPersonalizationFlags(db) {
   // gets grandfathered in rather than suddenly greeting with no name at all.
   if (!nameFlag && monthCount > 0) {
     await db.meta.put({ key: 'userName', value: 'Wafiq' });
+  }
+
+  // The guided tour is for new users. A device that already has a month
+  // predates it, so it's marked complete rather than firing on an
+  // already-set-up install (it's still replayable from Settings anytime).
+  if (!tourFlag && monthCount > 0) {
+    await db.meta.put({ key: 'tourCompleted', value: true });
   }
 }

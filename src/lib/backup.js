@@ -1,6 +1,7 @@
 import db from './db';
 import { migrateV1 } from './migrate.js';
 import { initPersonalizationFlags } from './personalization.js';
+import { endTour } from './tour.js';
 
 const SCHEMA_VERSION = 2;
 
@@ -116,4 +117,9 @@ export async function importBackup(file) {
   // Fallback for backups exported before these flags existed -- infers them
   // from the restored data itself (e.g. an existing giving-type goal).
   await initPersonalizationFlags(db);
+
+  // A restored backup means this isn't a fresh install -- if the guided
+  // tour auto-started before the import happened (empty DB, no month yet),
+  // stop it rather than leaving it stuck showing onboarding steps.
+  await endTour(true);
 }

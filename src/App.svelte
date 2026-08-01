@@ -4,6 +4,7 @@
   import { showToast } from './lib/toast.js';
   import TabBar from './lib/components/TabBar.svelte';
   import Toast from './lib/components/Toast.svelte';
+  import GuideOverlay from './lib/components/GuideOverlay.svelte';
   import Home from './routes/Home.svelte';
   import Goals from './routes/Goals.svelte';
   import History from './routes/History.svelte';
@@ -85,4 +86,5 @@
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
 
   <Toast />
+  <GuideOverlay />
 </div>

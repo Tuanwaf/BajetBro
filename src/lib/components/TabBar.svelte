@@ -15,7 +15,7 @@
 
 <div class="tabbar">
   {#each tabs as t (t.id)}
-    <button class="tab" class:active={$currentView === t.id} onclick={() => currentView.set(t.id)}>
+    <button class="tab" data-guide="tab-{t.id}" class:active={$currentView === t.id} onclick={() => currentView.set(t.id)}>
       {#if t.id === 'home'}
         <svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 4l8 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9h12v-9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       {:else}
@@ -26,12 +26,12 @@
   {/each}
 
   <div class="tab-spacer"></div>
-  <button class="fab" aria-label="Add expense" onclick={onAddClick}>
+  <button class="fab" data-guide="tab-add" aria-label="Add expense" onclick={onAddClick}>
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#241a05" stroke-width="2.4" stroke-linecap="round"/></svg>
   </button>
 
   {#each tabs2 as t (t.id)}
-    <button class="tab" class:active={$currentView === t.id} onclick={() => currentView.set(t.id)}>
+    <button class="tab" data-guide="tab-{t.id}" class:active={$currentView === t.id} onclick={() => currentView.set(t.id)}>
       {#if t.id === 'history'}
         <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       {:else}

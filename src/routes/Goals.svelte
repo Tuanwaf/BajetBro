@@ -267,7 +267,7 @@
 <h2 class="title">Goals</h2>
 <p class="sub">Save up, then put it where it counts.</p>
 
-<div class="balance-card" style="border-color:var(--gold);">
+<div class="balance-card" data-guide="goals-pool" style="border-color:var(--gold);">
   <div class="balance-top"><div class="lbl">Ready to allocate</div></div>
   <div class="balance-amt" style="color:var(--gold);"><span class="cur">RM</span>{fmt(pool)}</div>
   <div style="font-size:12px; color:var(--lo); position:relative; z-index:1;">
@@ -280,7 +280,7 @@
   </div>
 </div>
 
-<div class="section-hd"><h3>Your goals</h3><span>{activeGoals.length} active</span></div>
+<div class="section-hd" data-guide="goals-list"><h3>Your goals</h3><span>{activeGoals.length} active</span></div>
 {#each activeGoals as g (g.id)}
   {@const alloc = goalAllocated(g)}
   {@const reached = goalReached(g)}
