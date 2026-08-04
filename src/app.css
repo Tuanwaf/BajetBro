@@ -305,14 +305,10 @@ h2.title {
    silhouette without the glass look. */
 .navdock {
   position: fixed; left: 0; right: 0;
-  /* Real iPhones report env(safe-area-inset-bottom) around 34px on their
-     own (for the home indicator) -- any further top-up on top of that
-     (invisible in desktop testing, which has no inset at all to stack
-     with) pushes the whole dock noticeably higher on an actual device.
-     Keeping this near-zero puts it right at the safe area's own edge --
-     as close to the bottom as it can get while still clearing the home
-     indicator. */
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 2px);
+  /* Flush against the safe area's own edge -- as close to the bottom as
+     possible while still clearing the home indicator (the inset itself,
+     ~34px on real iPhones, already provides that clearance on its own). */
+  bottom: env(safe-area-inset-bottom, 0px);
   display: flex; align-items: center; justify-content: center;
   padding: 0 16px;
   z-index: 40;
