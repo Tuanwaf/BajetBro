@@ -108,7 +108,7 @@
         {#if editingId === l.id}
           <div class="tx-edit">
             <div class="chip-grid">
-              <button class="chip ghost" class:selected={editDirection === 'lent'} style={editDirection === 'lent' ? 'color:#4ade80' : ''} onclick={() => (editDirection = 'lent')}>Loan to someone</button>
+              <button class="chip ghost" class:selected={editDirection === 'lent'} style={editDirection === 'lent' ? 'color:var(--good)' : ''} onclick={() => (editDirection = 'lent')}>Loan to someone</button>
               <button class="chip ghost" class:selected={editDirection === 'borrowed'} style={editDirection === 'borrowed' ? 'color:#f2a154' : ''} onclick={() => (editDirection = 'borrowed')}>Loan from someone</button>
             </div>
             <input class="note-input" bind:value={editPerson} placeholder="Person's name" />
@@ -143,7 +143,7 @@
       <div class="card" style="margin-top:12px;">
         <div class="tx-edit" style="border-bottom:none; padding-top:0;">
           <div class="chip-grid">
-            <button class="chip ghost" class:selected={newDirection === 'lent'} style={newDirection === 'lent' ? 'color:#4ade80' : ''} onclick={() => (newDirection = 'lent')}>Loan to someone</button>
+            <button class="chip ghost" class:selected={newDirection === 'lent'} style={newDirection === 'lent' ? 'color:var(--good)' : ''} onclick={() => (newDirection = 'lent')}>Loan to someone</button>
             <button class="chip ghost" class:selected={newDirection === 'borrowed'} style={newDirection === 'borrowed' ? 'color:#f2a154' : ''} onclick={() => (newDirection = 'borrowed')}>Loan from someone</button>
           </div>
           <input class="note-input" bind:value={newPerson} placeholder="Person's name" />
@@ -169,7 +169,7 @@
 <style>
   .loan-summary { display: flex; gap: 10px; margin-bottom: 14px; }
   .loan-stat { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .add-loan-btn { margin-top: 12px; background: var(--gold); border-color: var(--gold); color: #241a05; }
+  .add-loan-btn { margin-top: 12px; background: var(--gold); border-color: var(--stroke-2); color: var(--accent-ink); }
   .tx-row { display: flex; align-items: center; gap: 8px; padding: 10px 4px; border-bottom: 1px solid var(--stroke); }
   .tx-row:last-child { border-bottom: none; }
   .tx-row > div:first-child { flex: 1; min-width: 0; }

@@ -680,24 +680,24 @@
   .goal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
   .goal-state { font-size: 11.5px; font-family: var(--mono); color: var(--dim); }
   .goal-state.done { color: var(--good); font-family: var(--body); font-weight: 700; }
-  .goal-action { background: none; border: 1px solid var(--stroke-2); border-radius: 10px; padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--gold); font-family: var(--body); }
-  .goal-card.reached { border-color: rgba(74, 222, 128, 0.4); }
+  .goal-action { background: none; border: 1.5px solid var(--stroke-2); border-radius: 12px; padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--gold); font-family: var(--body); }
+  .goal-card.reached { border-color: var(--good); }
   .goal-card.closed { opacity: 0.55; }
   .goal-card.closed .goal-name { color: var(--lo); }
 
-  .new-goal-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 12px; padding: 13px 0; border: 1px dashed var(--stroke-2); border-radius: 14px; color: var(--gold); font-size: 13px; font-weight: 700; background: none; }
+  .new-goal-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 12px; padding: 13px 0; border: 2px dashed var(--stroke-2); border-radius: 14px; color: var(--gold); font-size: 13px; font-weight: 700; background: none; }
 
   .pool-actions { display: flex; gap: 8px; margin-top: 16px; position: relative; z-index: 1; }
-  .pool-actions button { flex: 1; padding: 11px 0; border-radius: 12px; font-size: 12.5px; font-weight: 700; font-family: var(--body); border: 1px solid var(--stroke-2); }
-  .pool-actions .primary { background: var(--gold); color: #241a05; border-color: var(--gold); }
-  .pool-actions .ghost { background: rgba(255, 255, 255, 0.05); color: var(--hi); }
+  .pool-actions button { flex: 1; padding: 11px 0; border-radius: 14px; font-size: 12.5px; font-weight: 700; font-family: var(--body); border: 2px solid var(--stroke-2); box-shadow: 2px 2px 0 var(--stroke-2); }
+  .pool-actions .primary { background: var(--gold); color: var(--accent-ink); border-color: var(--stroke-2); }
+  .pool-actions .ghost { background: var(--panel-2); color: var(--hi); }
 
   .nav-rows { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-  .nav-row { display: flex; align-items: center; justify-content: space-between; width: 100%; background: var(--panel); border: 1px solid var(--stroke); border-radius: 16px; padding: 15px 16px; color: var(--hi); font-size: 14px; font-weight: 700; font-family: var(--body); }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; width: 100%; background: var(--panel); border: 2px solid var(--stroke-2); border-radius: 16px; box-shadow: 3px 3px 0 var(--stroke-2); padding: 15px 16px; color: var(--hi); font-size: 14px; font-weight: 700; font-family: var(--body); }
   .nav-row .nav-meta { display: flex; align-items: center; gap: 10px; color: var(--dim); font-family: var(--mono); font-size: 13px; font-weight: 600; }
 
   .type-row { display: flex; flex-direction: column; gap: 8px; }
-  .type-opt { text-align: left; background: var(--panel); border: 1px solid var(--stroke-2); border-radius: 14px; padding: 12px 14px; color: var(--hi); font-family: var(--body); }
+  .type-opt { text-align: left; background: var(--panel); border: 2px solid var(--stroke-2); border-radius: 14px; padding: 12px 14px; color: var(--hi); font-family: var(--body); }
   .type-opt.sel { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
   .type-opt .type-t { font-size: 14px; font-weight: 700; }
   .type-opt .type-d { font-size: 11.5px; color: var(--lo); margin-top: 3px; line-height: 1.4; }

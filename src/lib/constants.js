@@ -1,4 +1,4 @@
-export const BUFFER_COLOR = '#f2555a';
+export const BUFFER_COLOR = '#e5323b';
 
 export const BUFFER_LABEL_PRESETS = ['BNPL', 'Zakat', 'Emergency', 'Misc'];
 

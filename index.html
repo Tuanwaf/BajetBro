@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes, maximum-scale=5" />
-    <meta name="theme-color" content="#0d0f14" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#efe9d8" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BajetBro" />
@@ -25,7 +25,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #0d0f14;
+        /* Matches the app's current --ink-2 background. This runs before
+           app.css loads, so it can't reference the CSS variable directly --
+           keep this in sync by hand if the app's background ever changes. */
+        background: #efe9d8;
         transition: opacity 0.35s ease;
       }
       #splash img {

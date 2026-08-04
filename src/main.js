@@ -6,6 +6,13 @@ import { seedIfNeeded } from './lib/seed.js';
 import { initPersonalizationFlags } from './lib/personalization.js';
 import { startTour } from './lib/tour.js';
 
+// Belt-and-suspenders against pinch-zoom alongside the viewport meta's
+// user-scalable=no and app.css's touch-action:manipulation -- older iOS
+// Safari versions have been inconsistent about honoring the meta tag alone,
+// and `gesturestart` is WebKit's own pinch-gesture event, so blocking it
+// directly closes that gap. Should feel like a native app, not a webpage.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
 async function init() {
   if (navigator.storage?.persist) {
     // Reduces (does not eliminate) eviction risk, notably on iOS Safari.

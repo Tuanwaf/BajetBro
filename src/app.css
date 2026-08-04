@@ -1,37 +1,54 @@
 :root {
-  --ink: #12141a;
-  --ink-2: #0d0f14;
-  --panel: #1b1f2a;
-  --panel-2: #232838;
-  --stroke: rgba(255, 255, 255, 0.07);
-  --stroke-2: rgba(255, 255, 255, 0.12);
-  --hi: #eef0f6;
-  --lo: #8a90a3;
-  --dim: #565c6e;
-  --gold: #e7b34e;
-  --gold-dim: rgba(231, 179, 78, 0.16);
-  --red: #f2555a;
-  --red-dim: rgba(242, 85, 90, 0.16);
-  --good: #4ade80;
+  /* --ink and --ink-2 were two near-identical near-blacks in the old dark
+     theme, so sheets (--ink) and the base page (--ink-2) looked the same
+     surface. Kept equal here for the same reason -- otherwise every sheet
+     (Add entry, New Goal, Closed Goals, Spent from savings, category
+     detail) renders pure white against the cream page behind it. */
+  --ink: #efe9d8;
+  --ink-2: #efe9d8;
+  --panel: #ffffff;
+  --panel-2: #efe9d8;
+  --stroke: rgba(17, 19, 24, 0.16);
+  --stroke-2: #111318;
+  --hi: #111318;
+  --lo: #33363d;
+  --dim: #6d7079;
+  --gold: #ff4d2e;
+  --gold-dim: rgba(255, 77, 46, 0.16);
+  --red: #e5323b;
+  --red-dim: rgba(229, 50, 59, 0.16);
+  --good: #12a150;
+  /* Text/icon color for anything sitting ON TOP of --gold (buttons, the FAB,
+     the tour's "Next" pill, etc). Checked the actual contrast ratio rather
+     than eyeballing it: dark ink gives ~6.3:1 against this orange-red vs
+     ~3.3:1 for white, so dark wins here (same call the original gold accent
+     made, just with less headroom since this accent is more saturated). */
+  --accent-ink: #111318;
 
   --c-rent: #6e8bff;
   --c-phone: #38c6d9;
   --c-petrol: #f2994a;
   --c-food: #c084f5;
   --c-spotify: #3ddc97;
-  --c-saving: #e7b34e;
-  --c-buffer: #f2555a;
+  --c-saving: #ff4d2e;
+  --c-buffer: #e5323b;
 
   --h-initial: #3ddcb0;
   --h-used: #f2a154;
   --h-send: #f2557a;
   --h-remain: #b07af2;
 
-  --display: ui-rounded, "SF Pro Rounded", "Segoe UI Rounded", system-ui, sans-serif;
+  /* Dropped the "Rounded" faces (ui-rounded/SF Pro Rounded/Segoe UI Rounded)
+     for headings -- a soft rounded display face reads friendly, which fights
+     a brutalist page full of hard borders and offset shadows. These are bold
+     geometric grotesks instead -- confident, a bit poster-like, no softness.
+     Body/mono stay untouched: they were never "Rounded" variants and are
+     already neutral. */
+  --display: "Avenir Next", "Futura", "Helvetica Neue", Arial, sans-serif;
   --body: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -45,6 +62,11 @@ html {
      is actually tall enough to scroll. */
   overscroll-behavior-y: auto;
   scrollbar-width: none; /* Firefox: hide the scroll indicator */
+  /* Belt-and-suspenders alongside the viewport meta's user-scalable=no --
+     disables pinch/double-tap zoom at the CSS level too (some browsers are
+     inconsistent about honoring the meta tag alone). Doesn't block normal
+     scroll panning, just zoom gestures. */
+  touch-action: manipulation;
 }
 html::-webkit-scrollbar { display: none; } /* WebKit/Safari: hide it too */
 button, .chip, .tab, .month-row, .cat-row {
@@ -81,18 +103,21 @@ body {
      status-bar blur below samples it correctly and the frost actually works.
      Content runs to y=0 and scrolls UNDER the blur; the top padding keeps the
      first item clear of the notch at rest, the bottom padding clears the
-     fixed tab bar. */
+     floating nav dock. */
   padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px
-    calc(env(safe-area-inset-bottom, 0px) + 104px);
+    calc(env(safe-area-inset-bottom, 0px) + 128px);
 }
 
 /* Frosted status-bar overlay. Fixed to the viewport; because the document
    (body) scrolls -- not an inner overflow container -- backdrop-filter DOES
    sample the content passing behind the Dynamic Island in the installed PWA.
-   Kept deliberately LIGHT: a gentle blur plus a soft dark scrim just strong
-   enough to keep the white status-bar glyphs legible, never a solid bar. The
-   mask fades the whole layer (blur included) out at the bottom so it melts
-   into the sharp content instead of ending on a hard edge. */
+   iOS forces WHITE status-bar glyphs here (black-translucent) regardless of
+   in-app theme -- that's a platform limit, not something CSS/JS can flip per
+   theme. Since the app is light now, the scrim has to stay dark/opaque enough
+   on its own for those glyphs to read, independent of whatever content
+   scrolls behind it. The mask fades the whole layer (blur included) out at
+   the bottom so it melts into the sharp content instead of ending on a hard
+   edge. */
 .status-bar-blur {
   position: fixed;
   top: 0;
@@ -103,9 +128,9 @@ body {
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    rgba(13, 15, 20, 0.26) 0%,
-    rgba(13, 15, 20, 0.14) 50%,
-    rgba(13, 15, 20, 0) 100%
+    rgba(17, 19, 24, 0.62) 0%,
+    rgba(17, 19, 24, 0.34) 55%,
+    rgba(17, 19, 24, 0) 100%
   );
   backdrop-filter: blur(6px) saturate(120%);
   -webkit-backdrop-filter: blur(6px) saturate(120%);
@@ -121,16 +146,18 @@ body {
 h2.title {
   font-family: var(--display);
   font-size: 26px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.01em;
+  text-transform: uppercase;
   margin: 14px 0 2px;
 }
 .sub { font-size: 13px; color: var(--lo); margin: 0 0 18px; }
 
 .card {
   background: var(--panel);
-  border: 1px solid var(--stroke);
+  border: 2px solid var(--stroke-2);
   border-radius: 20px;
+  box-shadow: 4px 4px 0 var(--stroke-2);
   padding: 16px 18px;
 }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -140,33 +167,40 @@ h2.title {
   gap: 5px;
   padding: 3px 10px;
   border-radius: 99px;
+  border: 1.5px solid var(--stroke-2);
   font-size: 11.5px;
   font-weight: 600;
   font-family: var(--mono);
 }
-.pill.good { background: rgba(74, 222, 128, 0.14); color: var(--good); }
+.pill.good { background: rgba(18, 161, 80, 0.14); color: var(--good); }
 .pill.bad { background: var(--red-dim); color: var(--red); }
 .pill.neutral { background: var(--panel-2); color: var(--lo); }
 .pill.gold { background: var(--gold-dim); color: var(--gold); }
 
 /* ---------- dashboard ---------- */
 .balance-card {
-  background: linear-gradient(160deg, var(--panel-2), var(--panel) 70%);
-  border: 1px solid var(--stroke-2);
-  border-radius: 24px;
-  padding: 20px 20px 18px;
+  background: var(--panel);
+  border: 2px solid var(--stroke-2);
+  border-radius: 22px;
+  box-shadow: 5px 5px 0 var(--stroke-2);
+  padding: 30px 20px 18px;
   margin-bottom: 16px;
   position: relative;
-  overflow: hidden;
 }
-.balance-card::after {
+/* Traffic-light window dots -- the "this is a little app window" flourish,
+   reserved for hero cards only (not every .card) so it reads as a signature
+   accent rather than clutter. Pure CSS via box-shadow-cloned circles, no
+   markup needed; reuses the app's own semantic colors instead of literal
+   macOS red/yellow/green. */
+.balance-card::before {
   content: "";
   position: absolute;
-  top: -40%;
-  right: -20%;
-  width: 180px;
-  height: 180px;
-  background: radial-gradient(circle, rgba(231, 179, 78, 0.16), transparent 65%);
+  top: 14px; left: 18px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 16px 0 0 var(--gold), 32px 0 0 var(--good);
+  z-index: 2;
 }
 .balance-top {
   display: flex;
@@ -190,8 +224,8 @@ h2.title {
 .stat {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--stroke);
+  background: var(--ink-2);
+  border: 1.5px solid var(--stroke-2);
   border-radius: 14px;
   padding: 10px 8px 10px 12px;
 }
@@ -233,7 +267,8 @@ h2.title {
 .end-month-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; margin-top: 20px; padding: 13px 0;
-  border-radius: 16px; border: 1px solid var(--stroke-2);
+  border-radius: 16px; border: 2px solid var(--stroke-2);
+  box-shadow: 3px 3px 0 var(--stroke-2);
   background: var(--panel); color: var(--lo);
   font-family: var(--body); font-size: 13px; font-weight: 700;
 }
@@ -242,7 +277,7 @@ h2.title {
 .add-dividend-btn {
   position: relative; z-index: 1;
   width: 100%; margin-top: 14px; padding: 11px 0;
-  border-radius: 14px; border: 1px dashed var(--stroke-2);
+  border-radius: 14px; border: 2px dashed var(--stroke-2);
   background: none; color: var(--gold);
   font-family: var(--body); font-weight: 700; font-size: 12.5px;
 }
@@ -250,60 +285,93 @@ h2.title {
 .io-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; padding: 13px 0;
-  border-radius: 14px; border: 1px solid var(--stroke-2);
+  border-radius: 16px; border: 2px solid var(--stroke-2);
+  box-shadow: 3px 3px 0 var(--stroke-2);
   background: var(--panel-2); color: var(--hi);
   font-family: var(--body); font-size: 13px; font-weight: 700;
 }
 .io-btn svg { width: 16px; height: 16px; }
 
-/* ---------- tab bar ---------- */
-.tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0;
-  height: 84px;
-  background: rgba(27, 31, 42, 0.86);
-  backdrop-filter: blur(18px);
-  border-top: 1px solid var(--stroke);
-  display: flex;
-  align-items: flex-start;
-  padding-top: 10px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+/* ---------- floating nav dock ----------
+   An iOS-style floating capsule tab bar, detached from the bottom edge, with
+   a sliding highlight you can drag across (see TabBar.svelte for the spring
+   physics driving it) and a centred, elevated add button. Opaque rather than
+   frosted-glass -- backdrop blur reads as soft/glossy, which brutalism
+   avoids; a flat panel with a hard border+shadow keeps the same floating
+   silhouette without the glass look. */
+.navdock {
+  position: fixed; left: 0; right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 16px;
   z-index: 40;
 }
 /* Hidden while a text field has focus -- see App.svelte. Sidesteps iOS
    Safari's unreliable position:fixed-vs-keyboard behavior entirely instead
    of fighting it with viewport math. A transform-based slide-away still let
-   a sliver of the FAB (which pokes 24px above the bar's own box) ghost
-   through during scroll while the keyboard was open -- WebKit's known
+   a sliver of the FAB (which pokes above the pill's own box) ghost through
+   during scroll while the keyboard was open -- WebKit's known
    fixed-position-plus-keyboard repaint glitch isn't reliably fixed by
    transforms, since the element is still in the render/compositing tree.
    `display: none` removes it from rendering entirely, so there's nothing
    left to ghost. */
-.tabbar.kb-hidden {
+.navdock.kb-hidden {
   display: none;
 }
-.tab {
-  flex: 1;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
+.navpill {
+  position: relative;
+  flex: 1; min-width: 0;
+  height: 70px;
+  display: flex; align-items: stretch;
+  padding: 7px;
+  border-radius: 35px;
+  background: var(--panel);
+  border: 2px solid var(--stroke-2);
+  box-shadow: 4px 4px 0 var(--stroke-2);
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+}
+/* Solid fill rather than a soft tinted wash -- a stark black pill with white
+   active-tab content reads more "brutal" than a translucent accent glow. */
+.nav-indicator {
+  position: absolute; left: 0; top: 7px;
+  height: calc(100% - 14px); width: 70px;
+  border-radius: 28px;
+  background: var(--stroke-2);
+  z-index: 0;
+  pointer-events: none;
+}
+.navtab {
+  position: relative; z-index: 1;
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   background: none; border: none; color: var(--dim);
   font-family: var(--body); font-size: 10px; font-weight: 600;
-  padding: 2px 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
 }
-.tab.active { color: var(--gold); }
-.tab svg { width: 21px; height: 21px; }
-.tab-spacer { flex: 1; }
-.fab {
+/* This bezier overshoots past 100% before settling -- a pure-CSS spring-like
+   pop for the icon itself when it becomes active, no JS required. */
+.navtab svg { width: 22px; height: 22px; pointer-events: none; transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.navtab span { pointer-events: none; transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.navtab.active { color: #ffffff; }
+.navtab.active svg { transform: scale(1.14) translateY(-1px); }
+.navtab.active span { transform: translateY(1px); }
+.nav-fabslot { flex: 0 0 72px; pointer-events: none; }
+.navfab {
   position: absolute;
-  left: 50%; top: -24px; transform: translateX(-50%);
-  width: 56px; height: 56px;
+  left: 50%; top: -15px; transform: translateX(-50%);
+  width: 60px; height: 60px;
   border-radius: 50%;
   background: var(--gold);
-  border: 5px solid var(--ink);
+  border: 2px solid var(--stroke-2);
+  box-shadow: 4px 4px 0 var(--stroke-2);
+  color: var(--accent-ink);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 8px 20px -4px rgba(231, 179, 78, 0.5);
-  z-index: 70;
+  z-index: 2;
 }
-.fab svg { width: 22px; height: 22px; }
-.fab:active { transform: translateX(-50%) scale(0.92); }
+.navfab svg { width: 24px; height: 24px; }
+.navfab:active { transform: translateX(-50%) scale(0.92); }
 
 /* ---------- sheets ---------- */
 .sheet {
@@ -319,7 +387,8 @@ h2.title {
 .sheet-hd h2 { font-family: var(--display); font-size: 19px; font-weight: 700; margin: 0; }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 50%;
-  background: var(--panel-2); border: none; color: var(--lo);
+  background: var(--panel-2); border: 2px solid var(--stroke-2); color: var(--lo);
+  box-shadow: 2px 2px 0 var(--stroke-2);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -335,7 +404,7 @@ h2.title {
   display: flex; align-items: center; gap: 6px;
   padding: 9px 13px;
   border-radius: 14px;
-  border: 1px solid var(--stroke-2);
+  border: 2px solid var(--stroke-2);
   background: var(--panel);
   font-size: 13px; font-weight: 600; color: var(--hi);
   transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
@@ -351,7 +420,7 @@ h2.title {
 .field-lbl { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); margin: 18px 0 8px; }
 
 .note-input {
-  width: 100%; background: var(--panel); border: 1px solid var(--stroke-2);
+  width: 100%; background: var(--panel); border: 2px solid var(--stroke-2);
   border-radius: 14px; padding: 12px 14px; color: var(--hi); font-family: var(--body);
   font-size: 16px;
 }
@@ -361,8 +430,9 @@ h2.title {
 
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .key {
-  background: var(--panel); border: 1px solid var(--stroke);
+  background: var(--panel); border: 2px solid var(--stroke-2);
   border-radius: 14px; padding: 14px 0; text-align: center;
+  box-shadow: 2px 2px 0 var(--stroke-2);
   font-family: var(--mono); font-size: 19px; font-weight: 600; color: var(--hi);
   /* The press flash is driven per-tap by the Web Animations API (see
      flashKey in AddExpenseSheet.svelte) as one continuous gold→rest pulse,
@@ -374,7 +444,8 @@ h2.title {
 
 .save-btn {
   width: 100%; margin-top: 16px;
-  background: var(--gold); color: #241a05; border: none;
+  background: var(--gold); color: var(--accent-ink); border: 2px solid var(--stroke-2);
+  box-shadow: 3px 3px 0 var(--stroke-2);
   font-family: var(--body); font-weight: 700; font-size: 15px;
   padding: 15px 0; border-radius: 16px;
 }
@@ -389,8 +460,9 @@ h2.title {
   width: 112px; height: 112px; border-radius: 50%; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   position: relative;
+  border: 2px solid var(--stroke-2);
 }
-.ring::before { content: ""; position: absolute; inset: 14px; background: var(--ink); border-radius: 50%; }
+.ring::before { content: ""; position: absolute; inset: 14px; background: var(--panel); border-radius: 50%; }
 .ring .mid { position: relative; z-index: 1; text-align: center; }
 .ring .mid .k { font-size: 10px; color: var(--lo); font-weight: 700; text-transform: uppercase; }
 .ring .mid .v { font-family: var(--mono); font-size: 15px; font-weight: 700; }
@@ -409,8 +481,9 @@ h2.title {
 .month-detail { display: none; padding: 4px 4px 16px; }
 .month-detail.open { display: block; }
 
-/* ---------- hutang ---------- */
-.progress-track { height: 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.06); overflow: hidden; margin-top: 14px; position: relative; z-index: 1; }
+/* ---------- hutang (legacy -- superseded by the Goals page, kept only
+   because nothing currently imports these classes; safe to ignore) ---------- */
+.progress-track { height: 8px; border-radius: 99px; background: rgba(0, 0, 0, 0.06); overflow: hidden; margin-top: 14px; position: relative; z-index: 1; }
 .progress-fill { height: 100%; border-radius: 99px; background: var(--h-send); transition: width 0.4s ease; }
 .hu-name { font-size: 14px; font-weight: 700; }
 .hu-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 10px; }
@@ -428,13 +501,13 @@ h2.title {
 .set-row .lbl2 { flex: 1; font-size: 14px; font-weight: 600; }
 .set-amt {
   font-family: var(--mono); font-size: 16px; font-weight: 600;
-  background: var(--panel-2); border: 1px solid var(--stroke-2);
-  border-radius: 10px; padding: 6px 8px; width: 92px; text-align: right; color: var(--hi);
+  background: var(--panel-2); border: 2px solid var(--stroke-2);
+  border-radius: 12px; padding: 6px 8px; width: 92px; text-align: right; color: var(--hi);
 }
 .add-cat-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   width: 100%; margin-top: 14px; padding: 12px 0;
-  border: 1px dashed var(--stroke-2); border-radius: 14px;
+  border: 2px dashed var(--stroke-2); border-radius: 14px;
   color: var(--lo); font-size: 13px; font-weight: 600; background: none;
 }
 .toast {

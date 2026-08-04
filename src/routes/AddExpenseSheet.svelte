@@ -93,8 +93,17 @@
     if (!el || typeof el.animate !== 'function') return;
     el.__flash?.cancel();
     const cs = getComputedStyle(el);
+    const root = getComputedStyle(document.documentElement);
     const rest = { backgroundColor: cs.backgroundColor, borderColor: cs.borderColor, color: cs.color };
-    const lit = { backgroundColor: '#e7b34e', borderColor: '#e7b34e', color: '#241a05' };
+    // Read the accent + its border/ink from the live theme tokens rather than
+    // hardcoding hex -- this flash used to freeze whatever --gold was at the
+    // time it was written, which would've gone stale the moment the palette
+    // changed.
+    const lit = {
+      backgroundColor: root.getPropertyValue('--gold').trim(),
+      borderColor: root.getPropertyValue('--stroke-2').trim(),
+      color: root.getPropertyValue('--accent-ink').trim(),
+    };
     el.__flash = el.animate(
       [
         { ...lit, transform: 'scale(0.95)', offset: 0 },
@@ -236,7 +245,7 @@
           <button class="key op" onclick={(e) => pressKey('⌫', e)} aria-label="Delete">⌫</button>
           <button class="key" onclick={(e) => pressKey('0', e)}>0</button>
           <button class="key next" disabled={kpCents === 0} onclick={next} aria-label="Next">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l5 5L19 6.5" stroke="#241a05" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l5 5L19 6.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
       </div>
@@ -279,8 +288,8 @@
       <button class="chip" class:selected={selectedCatKey === 'spend'} style="color:#f2a154" onclick={() => selectCat('spend')}>
         <span class="dot" style="background:#f2a154"></span>Spend from savings
       </button>
-      <button class="chip" class:selected={selectedCatKey === 'reimburse'} style="color:#4ade80" onclick={() => selectCat('reimburse')}>
-        <span class="dot" style="background:#4ade80"></span>Paid back to me
+      <button class="chip" class:selected={selectedCatKey === 'reimburse'} style="color:var(--good)" onclick={() => selectCat('reimburse')}>
+        <span class="dot" style="background:var(--good)"></span>Paid back to me
       </button>
     </div>
 
@@ -383,7 +392,7 @@
     justify-content: center;
   }
   .kp1 .key.op { font-size: 22px; }
-  .key.next { background: var(--gold); border-color: var(--gold); }
+  .key.next { background: var(--gold); border-color: var(--stroke-2); color: var(--accent-ink); }
   .key.next:disabled { opacity: 0.35; }
   .key.next svg { width: 28px; height: 28px; }
 
@@ -391,7 +400,7 @@
   .amt-sum { flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 0 12px; }
   .amt-sum .cur { font-size: 15px; color: var(--lo); margin-right: 2px; }
   .amt-sum .v { font-family: var(--mono); font-size: 26px; font-weight: 600; }
-  .amt-sum .edit-amt { font-size: 11px; color: var(--gold); font-weight: 700; border: 1px solid var(--stroke-2); border-radius: 99px; padding: 3px 10px; background: none; margin-left: 6px; }
+  .amt-sum .edit-amt { font-size: 11px; color: var(--gold); font-weight: 700; border: 1.5px solid var(--stroke-2); border-radius: 99px; padding: 3px 10px; background: none; margin-left: 6px; }
   .add-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 10px; scrollbar-width: none; }
   .add-scroll::-webkit-scrollbar { display: none; }
   .save-wrap {

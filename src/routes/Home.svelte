@@ -296,8 +296,9 @@
     justify-content: space-between;
     width: 100%;
     background: var(--panel);
-    border: 1px solid rgba(74, 222, 128, 0.4);
+    border: 2px solid var(--good);
     border-radius: 16px;
+    box-shadow: 3px 3px 0 var(--stroke-2);
     padding: 14px 16px;
     margin-bottom: 16px;
     color: var(--hi);

@@ -68,15 +68,29 @@
     };
   });
 
+  // Picks whichever side of the spotlight has more room, then hard-caps the
+  // card's height to whatever that side actually has (with internal scroll as
+  // a last resort). The old version only compared space-above vs space-below
+  // and anchored via a fixed top + translateY(-100%) -- for a low-on-page
+  // target with a long body (step 9 "Buffer", step 13 "Fixed categories"),
+  // that let a tall card run off the bottom of the screen uncapped. Anchoring
+  // the "above" case by `bottom` instead of `top+transform` means it can
+  // never do that: it grows upward from a fixed point and stops at max-height.
+  // EDGE reserves a floor of breathing room at whichever edge the card ends
+  // up closest to -- without it, a tall spotlight (e.g. the whole Fixed
+  // categories card) leaves so little room that the guide card's own edge
+  // lands flush at y=0, right under the notch/status-bar overlay.
+  const EDGE = 20;
   let cardPlacement = $derived.by(() => {
-    if (!rect) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+    if (!rect) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', maxHeight: `calc(100vh - ${EDGE * 2}px)` };
     const viewportH = window.innerHeight;
-    const spaceBelow = viewportH - (rect.top + rect.height);
-    const spaceAbove = rect.top;
-    if (spaceBelow >= 200 || spaceBelow >= spaceAbove) {
-      return { top: `${rect.top + rect.height + 14}px`, left: '20px', right: '20px' };
+    const margin = 14;
+    const spaceBelow = viewportH - (rect.top + rect.height) - margin - EDGE;
+    const spaceAbove = rect.top - margin - EDGE;
+    if (spaceBelow >= spaceAbove) {
+      return { top: `${rect.top + rect.height + margin}px`, left: '20px', right: '20px', maxHeight: `${Math.max(120, spaceBelow)}px` };
     }
-    return { top: `${Math.max(14, rect.top - 14)}px`, left: '20px', right: '20px', transform: 'translateY(-100%)' };
+    return { bottom: `${viewportH - rect.top + margin}px`, left: '20px', right: '20px', maxHeight: `${Math.max(120, spaceAbove)}px` };
   });
 </script>
 
@@ -94,10 +108,12 @@
       <div class="guide-dim"></div>
     {/if}
 
-    <div class="guide-card" style="top:{cardPlacement.top}; left:{cardPlacement.left}; right:{cardPlacement.right}; transform:{cardPlacement.transform ?? 'none'};">
-      <div class="guide-progress">Step {$tourStepIndex + 1} of {total}</div>
-      <div class="guide-title">{step.title}</div>
-      <p class="guide-body">{step.body}</p>
+    <div class="guide-card" style="top:{cardPlacement.top ?? 'auto'}; bottom:{cardPlacement.bottom ?? 'auto'}; left:{cardPlacement.left}; right:{cardPlacement.right}; max-height:{cardPlacement.maxHeight ?? 'none'}; transform:{cardPlacement.transform ?? 'none'};">
+      <div class="guide-scroll">
+        <div class="guide-progress">Step {$tourStepIndex + 1} of {total}</div>
+        <div class="guide-title">{step.title}</div>
+        <p class="guide-body">{step.body}</p>
+      </div>
       <div class="guide-actions">
         <button class="guide-skip" onclick={() => endTour(true)}>Skip tour</button>
         <div class="guide-actions-right">
@@ -123,33 +139,41 @@
   .guide-ring {
     position: absolute;
     border: 2px solid var(--gold);
-    border-radius: 16px;
-    box-shadow: 0 0 0 4px rgba(231, 179, 78, 0.18), 0 0 24px rgba(231, 179, 78, 0.35);
+    border-radius: 18px;
+    box-shadow: 0 0 0 4px var(--gold-dim);
     transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
   }
   .guide-card {
     position: absolute;
     pointer-events: auto;
-    background: var(--panel, #1b1f2a);
-    border: 1px solid var(--stroke-2, #333a4a);
-    border-radius: 18px;
+    background: var(--panel);
+    border: 2px solid var(--stroke-2);
+    border-radius: 20px;
+    box-shadow: 5px 5px 0 var(--stroke-2);
     padding: 16px 18px;
     max-width: 380px;
     margin: 0 auto;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
+  /* Only this part scrolls when a long body doesn't fit the available
+     height -- the actions row below (Skip/Back/Next) stays pinned and
+     visible no matter what, instead of scrolling off with the text. */
+  .guide-scroll { overflow-y: auto; min-height: 0; }
   .guide-progress { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gold); }
-  .guide-title { font-size: 16px; font-weight: 700; color: var(--hi, #fff); margin-top: 4px; }
-  .guide-body { font-size: 13px; color: var(--lo, #b7bccb); line-height: 1.5; margin: 8px 0 14px; }
-  .guide-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .guide-title { font-size: 16px; font-weight: 700; color: var(--hi); margin-top: 4px; }
+  .guide-body { font-size: 13px; color: var(--lo); line-height: 1.5; margin: 8px 0 14px; }
+  .guide-actions { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 4px; }
   .guide-actions-right { display: flex; align-items: center; gap: 8px; }
-  .guide-skip { background: none; border: none; color: var(--dim, #7d8494); font-size: 12.5px; font-weight: 600; padding: 6px 2px; }
+  .guide-skip { background: none; border: none; color: var(--dim); font-size: 12.5px; font-weight: 600; padding: 6px 2px; }
   .guide-back {
-    width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--stroke-2, #333a4a);
-    background: none; color: var(--hi, #fff); display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--stroke-2);
+    box-shadow: 2px 2px 0 var(--stroke-2);
+    background: none; color: var(--hi); display: flex; align-items: center; justify-content: center;
   }
   .guide-next {
-    background: var(--gold); color: #241a05; border: none; border-radius: 99px;
+    background: var(--gold); color: var(--accent-ink); border: 2px solid var(--stroke-2); border-radius: 99px;
     padding: 9px 20px; font-size: 13px; font-weight: 700;
   }
   .guide-hint { font-size: 12px; font-weight: 700; color: var(--gold); }
