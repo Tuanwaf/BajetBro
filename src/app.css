@@ -105,7 +105,7 @@ body {
      first item clear of the notch at rest, the bottom padding clears the
      floating nav dock. */
   padding: calc(env(safe-area-inset-top, 0px) + 16px) 20px
-    calc(env(safe-area-inset-bottom, 0px) + 128px);
+    calc(env(safe-area-inset-bottom, 0px) + 112px);
 }
 
 /* Frosted status-bar overlay. Fixed to the viewport; because the document
@@ -301,7 +301,13 @@ h2.title {
    silhouette without the glass look. */
 .navdock {
   position: fixed; left: 0; right: 0;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+  /* Real iPhones report env(safe-area-inset-bottom) around 34px on their
+     own (for the home indicator) -- adding a further 22px on top of that
+     (fine in desktop testing, which has no inset at all to stack with)
+     pushed the whole dock much higher than intended on an actual device.
+     A much smaller top-up keeps it floating without sitting far from the
+     edge. */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
   display: flex; align-items: center; justify-content: center;
   padding: 0 16px;
   z-index: 40;
