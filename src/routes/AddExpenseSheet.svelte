@@ -36,21 +36,24 @@
   const GROW_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)';
   const SHRINK_MS = 450;
   const SHRINK_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
-  // Only for the shape's transform (position/scale) -- overshoots past the
-  // target then settles back, like a button's press-release squish, so the
-  // circle shrinks a hair smaller than the FAB then springs back to its
-  // exact size. Deliberately a much gentler overshoot than the tab bar's
-  // active-icon pop (1.56) -- this transform's scaleX/scaleY ratios are very
-  // different (the FAB's ~60px square target comes from a 390px-wide but
-  // 844px-tall viewport), so the SAME overshoot curve applied to both axes
-  // doesn't overshoot by the same amount on each -- verified via Playwright
-  // that 1.56 made height briefly collapse to near-zero while width only
-  // dipped modestly, a squished flat oval instead of a clean bounce. 1.08 is
-  // small enough that the mismatch between axes stays imperceptible. Border-
-  // radius/background keep SHRINK_EASE: an overshoot past 50% border-radius
-  // has no visible effect once it's already a circle, so bouncing it would
-  // just be wasted motion.
-  const SHRINK_BOUNCE = 'cubic-bezier(0.34, 1.08, 0.64, 1)';
+  // How much smaller than the FAB's exact size the circle dips at the bottom
+  // of its landing bounce -- 0.82 = dips to 82% of target size before
+  // springing back to 100%. Applied as a uniform multiplier on BOTH scaleX
+  // and scaleY (see the explicit bounce keyframes in shrinkToRect below),
+  // not via a bezier overshoot on the raw scale values -- those overshoot in
+  // absolute terms, and since the FAB's ~60px square target comes from
+  // scaling down a 390px-wide but 844px-tall viewport, scaleX and scaleY
+  // shrink by very different absolute amounts. A shared overshoot curve on
+  // the raw values hits height much harder than width (verified via
+  // Playwright: an early attempt at 1.56 collapsed height toward near-zero
+  // while width barely dipped -- a squished oval, not a bounce; dialing that
+  // down to 1.08 fixed the distortion but made the dip genuinely
+  // imperceptible, ~1px, per direct feedback that no bounce was visible at
+  // all). Multiplying the ALREADY-correct target scale by one shared factor
+  // keeps scaleX/scaleY proportional to each other throughout the dip,
+  // however big the dip is, so this can be a clearly visible size change
+  // without the earlier distortion.
+  const BOUNCE_DIP = 0.82;
 
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -161,12 +164,16 @@
     const vw = window.innerWidth, vh = window.innerHeight;
     const sx = rect.width / vw, sy = rect.height / vh;
     cancelActiveAnims();
+    const landed = `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`;
+    const dipped = `translate(${rect.left}px, ${rect.top}px) scale(${sx * BOUNCE_DIP}, ${sy * BOUNCE_DIP})`;
     const transformAnim = sheetEl.animate(
       [
-        { transform: 'translate(0px, 0px) scale(1, 1)' },
-        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})` },
+        { transform: 'translate(0px, 0px) scale(1, 1)', offset: 0, easing: SHRINK_EASE },
+        { transform: landed, offset: 0.82, easing: 'ease-out' },
+        { transform: dipped, offset: 0.91, easing: 'ease-out' },
+        { transform: landed, offset: 1 },
       ],
-      { duration: SHRINK_MS, easing: SHRINK_BOUNCE, fill: 'forwards' }
+      { duration: SHRINK_MS, fill: 'forwards' }
     );
     const shapeAnim = sheetEl.animate(
       [
