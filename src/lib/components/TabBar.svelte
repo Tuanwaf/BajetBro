@@ -17,6 +17,7 @@
   let pillEl;
   let indicatorEl;
   let tabEls = [];
+  let fabEl;
 
   const NAV_INSET = 7; // horizontal gap between the highlight pill and the tab edges
 
@@ -304,7 +305,7 @@
       {/each}
     </div>
 
-    <button class="navfab" data-guide="tab-add" aria-label="Add expense" onclick={onAddClick}>
+    <button class="navfab" data-guide="tab-add" aria-label="Add expense" bind:this={fabEl} onclick={() => onAddClick(fabEl.getBoundingClientRect())}>
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
     </button>
   </div>

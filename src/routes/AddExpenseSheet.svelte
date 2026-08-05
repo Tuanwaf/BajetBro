@@ -7,7 +7,110 @@
   import db from '../lib/db.js';
   import { currentView } from '../lib/viewStore.js';
 
-  let { open, onClose, intent = null } = $props();
+  let { open, onClose, intent = null, originRect = null } = $props();
+
+  // iOS-style "grow from the FAB, shrink back into it" morph. `openClass` (not
+  // the `open` prop directly) drives the sheet's own open/closed CSS class --
+  // on open it's set immediately (grow animation plays over the top of the
+  // already-open baseline); on close it's deliberately held at `true` until
+  // the shrink animation finishes, so the sheet stays visually "settled open"
+  // underneath the WAAPI-driven shrink the whole time, instead of the CSS
+  // slide-down transition fighting it. Falls back to the plain instant toggle
+  // (today's slide-up/down behaviour) whenever there's no origin rect --
+  // Goals' "Reserve"/"+ Add to this goal" and Home's "Feeds your Goals pool"
+  // link open this sheet without a FAB to morph from.
+  let sheetEl = $state(null);
+  let trackEl = $state(null);
+  let openClass = $state(false);
+  let activeOriginRect = null;
+  let shapeAnim = null;
+  let contentAnim = null;
+
+  function prefersReducedMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  function cancelActiveAnims() {
+    shapeAnim?.cancel();
+    contentAnim?.cancel();
+    shapeAnim = null;
+    contentAnim = null;
+  }
+  function growFromRect(rect) {
+    if (!sheetEl || prefersReducedMotion()) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const sx = rect.width / vw, sy = rect.height / vh;
+    cancelActiveAnims();
+    shapeAnim = sheetEl.animate(
+      [
+        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`, borderRadius: '50%', backgroundColor: 'var(--gold)' },
+        { transform: 'translate(0px, 0px) scale(1, 1)', borderRadius: '0%', backgroundColor: 'var(--ink)' },
+      ],
+      { duration: 480, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' }
+    );
+    if (trackEl) {
+      // Content fades in once the shape's grown past its first ~45% -- text
+      // and the keypad would just look like squished noise inside a
+      // FAB-sized circle if it were visible from the very start.
+      contentAnim = trackEl.animate(
+        [
+          { opacity: 0, offset: 0 },
+          { opacity: 0, offset: 0.45 },
+          { opacity: 1, offset: 1 },
+        ],
+        { duration: 480, easing: 'ease-out' }
+      );
+    }
+  }
+  function shrinkToRect(rect) {
+    if (!sheetEl || prefersReducedMotion()) return Promise.resolve();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const sx = rect.width / vw, sy = rect.height / vh;
+    cancelActiveAnims();
+    shapeAnim = sheetEl.animate(
+      [
+        { transform: 'translate(0px, 0px) scale(1, 1)', borderRadius: '0%', backgroundColor: 'var(--ink)' },
+        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`, borderRadius: '50%', backgroundColor: 'var(--gold)' },
+      ],
+      { duration: 420, easing: 'cubic-bezier(0.32, 0.72, 0, 1)', fill: 'forwards' }
+    );
+    if (trackEl) {
+      contentAnim = trackEl.animate(
+        [
+          { opacity: 1, offset: 0 },
+          { opacity: 0, offset: 0.4 },
+          { opacity: 0, offset: 1 },
+        ],
+        { duration: 420, easing: 'ease-in' }
+      );
+    }
+    // Cancelled (superseded by a newer open/close) resolves same as finished
+    // -- either way the caller just wants to know it's done reacting to it.
+    return shapeAnim.finished.catch(() => {});
+  }
+
+  $effect(() => {
+    if (open) {
+      activeOriginRect = originRect;
+      openClass = true;
+      if (activeOriginRect) growFromRect(activeOriginRect);
+    } else if (openClass) {
+      const rect = activeOriginRect;
+      if (!rect) {
+        openClass = false;
+      } else {
+        shrinkToRect(rect).then(() => {
+          // Snap to the closed state with no transition, then restore it --
+          // otherwise the CSS class flip would trigger its own translateY
+          // slide-down, visibly popping the just-shrunk circle back to full
+          // size for a frame before sliding it away.
+          if (sheetEl) sheetEl.style.transition = 'none';
+          openClass = false;
+          cancelActiveAnims();
+          if (sheetEl) requestAnimationFrame(() => { sheetEl.style.transition = ''; });
+        });
+      }
+    }
+  });
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
@@ -221,8 +324,8 @@
   }
 </script>
 
-<div class="sheet add-sheet" class:open>
-  <div class="add-track" class:step2={step === 2}>
+<div class="sheet add-sheet" class:open={openClass} bind:this={sheetEl}>
+  <div class="add-track" class:step2={step === 2} bind:this={trackEl}>
 
     <!-- STEP 1 · amount -->
     <div class="add-screen">
@@ -362,7 +465,11 @@
 <style>
   /* Two screens on a horizontal track: step 1 (amount) slides to step 2
      (category + note). The sheet clips the off-screen half. */
-  .add-sheet { overflow: hidden; }
+  /* transform-origin: 0 0 makes the FAB-morph's translate+scale math in the
+     script section (see growFromRect/shrinkToRect) land exactly on the FAB's
+     rect -- with the default centre origin, scaling wouldn't produce the
+     same top-left-anchored box a getBoundingClientRect() comparison needs. */
+  .add-sheet { overflow: hidden; transform-origin: 0 0; }
   .add-track {
     position: absolute;
     top: 0;

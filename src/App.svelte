@@ -1,5 +1,5 @@
 <script>
-  import { currentView, addOpen, addIntent } from './lib/viewStore.js';
+  import { currentView, addOpen, addIntent, addOriginRect } from './lib/viewStore.js';
   import { currentMonth } from './lib/stores.js';
   import { showToast } from './lib/toast.js';
   import TabBar from './lib/components/TabBar.svelte';
@@ -40,10 +40,14 @@
     addIntent.set(null);
   }
 
-  function handleAddClick() {
+  function handleAddClick(rect) {
     // Nothing to log against yet -- a fresh install has no month until the
     // Home onboarding form creates one.
     if (!$currentMonth) return showToast('Set up your first month on Home first');
+    // Plain object, not the live DOMRect -- getBoundingClientRect() is
+    // already a snapshot, but copying defensively costs nothing and avoids
+    // ever depending on DOMRect-specific behavior downstream.
+    addOriginRect.set(rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null);
     addOpen.set(true);
   }
 
@@ -111,7 +115,7 @@
 
   <TabBar onAddClick={handleAddClick} hidden={keyboardOpen} />
 
-  <AddExpenseSheet open={$addOpen} intent={$addIntent} onClose={closeAdd} />
+  <AddExpenseSheet open={$addOpen} intent={$addIntent} originRect={$addOriginRect} onClose={closeAdd} />
   <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
 
   <Toast />
