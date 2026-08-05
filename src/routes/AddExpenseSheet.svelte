@@ -27,7 +27,13 @@
   let activeAnims = [];
 
   const GROW_MS = 340;
-  const GROW_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  // Ease-IN-out, not the fast-start curve shrink still uses below -- growing
+  // fast-start meant most of the size change happened in the very first
+  // slice of the animation, so on a real device (slower/jankier frame
+  // pacing than desktop Chromium) the very first frame a person actually
+  // perceives was already well past the small-circle stage. Slow-start
+  // keeps it visibly small for longer before it accelerates into full size.
+  const GROW_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)';
   const SHRINK_MS = 450;
   const SHRINK_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
@@ -90,15 +96,15 @@
     );
     activeAnims.push(transformAnim, shapeAnim);
     if (trackEl) {
-      // Content starts fading in fairly early (15%) and overlaps with the
-      // ghost "+" fading out below -- a real crossfade, not a hard cut once
-      // the shape's merely "big enough".
+      // Content starts fading in at 10% and overlaps with the ghost "+"
+      // fading out below -- a real crossfade, not a hard cut once the shape's
+      // merely "big enough".
       activeAnims.push(
         trackEl.animate(
           [
             { opacity: 0, offset: 0 },
-            { opacity: 0, offset: 0.15 },
-            { opacity: 1, offset: 0.65 },
+            { opacity: 0, offset: 0.1 },
+            { opacity: 1, offset: 0.55 },
           ],
           { duration: GROW_MS, easing: 'ease-out' }
         )
@@ -106,8 +112,14 @@
     }
     if (ghostEl) {
       positionGhost(rect);
+      // Fully gone by 25% (was 45%) -- it was still visible once the sheet
+      // had nearly finished growing, which shouldn't be possible on paper
+      // given these offsets, but evidently was on a real device (this whole
+      // feature has repeatedly shown a gap between Chromium timing and real
+      // iPhone timing). Front-loading the fade-out this hard leaves a wide
+      // safety margin against that gap instead of just nudging the numbers.
       activeAnims.push(
-        ghostEl.animate([{ opacity: 1, offset: 0 }, { opacity: 0, offset: 0.45 }], { duration: GROW_MS, easing: 'ease-in' })
+        ghostEl.animate([{ opacity: 1, offset: 0 }, { opacity: 0, offset: 0.25 }], { duration: GROW_MS, easing: 'ease-in' })
       );
     }
   }
@@ -147,18 +159,19 @@
     }
     if (ghostEl) {
       positionGhost(rect);
-      // Starts fading in a little before content is fully gone (35% vs
-      // content's 40%) so there's a brief overlap there too, then finishes
-      // becoming fully visible before the shape reaches FAB size -- fill:
-      // 'forwards' holds it at opacity 1 until the close handoff cancels it
-      // in the same synchronous block as the real FAB's reveal, so the swap
-      // is invisible (both look identical, same position/size/color).
+      // Shifted later than the first version (was 0.35-0.85) per feedback
+      // that close already felt right and the "+" should reappear even
+      // closer to the very end, once the shape's genuinely small again --
+      // fill:'forwards' holds it at opacity 1 until the close handoff
+      // cancels it in the same synchronous block as the real FAB's reveal,
+      // so the swap is invisible (both look identical, same position/size/
+      // color).
       activeAnims.push(
         ghostEl.animate(
           [
             { opacity: 0, offset: 0 },
-            { opacity: 0, offset: 0.35 },
-            { opacity: 1, offset: 0.85 },
+            { opacity: 0, offset: 0.55 },
+            { opacity: 1, offset: 0.95 },
             { opacity: 1, offset: 1 },
           ],
           { duration: SHRINK_MS, easing: 'ease-out', fill: 'forwards' }
