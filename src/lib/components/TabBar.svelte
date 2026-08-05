@@ -72,11 +72,31 @@
   function setIndicatorTransform(x, sx, sy) {
     if (indicatorEl) indicatorEl.style.transform = `translateX(${x}px) scale(${sx}, ${sy})`;
   }
+  // While actively dragging and paused between two tabs, how far into that
+  // gap the pill's centre currently sits: 0 sitting right over a tab, 1 at
+  // the exact midpoint between its two neighbours. Uses the REAL distance
+  // between whichever two tabs currently bracket the centre (cached at drag
+  // start, since layout is static mid-drag) rather than an assumed uniform
+  // spacing -- the gap either side of the FAB slot is wider than the gaps
+  // between adjacent tabs, and this has to stretch correctly across it too.
+  function gapFracAt(cx) {
+    if (!dragCenters.length) return 0;
+    let below = -Infinity, above = Infinity;
+    for (const c of dragCenters) {
+      if (c <= cx && c > below) below = c;
+      if (c >= cx && c < above) above = c;
+    }
+    if (!isFinite(below) || !isFinite(above) || above <= below) return 0;
+    const half = (above - below) / 2;
+    const dist = Math.min(cx - below, above - cx);
+    return half > 0 ? Math.max(0, Math.min(1, dist / half)) : 0;
+  }
   function navLoop(now) {
     const dt = Math.min(now - (navLast || now), 32) / 1000;
     navLast = now;
     const vx = Math.abs(spX.velocity), st = Math.min(1, vx / 900);
-    spSX.setTarget(1 + st * 0.55);
+    const gapFrac = dragActive ? gapFracAt(spX.value + baseW / 2) : 0;
+    spSX.setTarget(1 + st * 0.55 + gapFrac * 0.6);
     spSY.setTarget(Math.max(0.72, 1 - st * 0.28));
     const cx = spX.update(dt), sx = spSX.update(dt), sy = spSY.update(dt), pop = spPop.update(dt);
     setIndicatorTransform(cx, sx * pop, sy * pop);
@@ -130,6 +150,7 @@
   }
 
   let dragActive = false, dragMoved = false, dragStartX = 0, grabOffset = 0, dragWatchdog = null;
+  let dragCenters = [];
 
   // Belt-and-suspenders against the highlight ever getting stranded between
   // two tabs. A single pointercancel fix wasn't enough in practice, which
@@ -171,6 +192,7 @@
   function onPointerDown(e) {
     if (e.target.closest('.navfab')) return;
     dragActive = true; dragMoved = false; dragStartX = e.clientX;
+    dragCenters = tabEls.filter(Boolean).map((t) => tabCenterX(t));
     const prx = clientXToLayoutX(e.clientX), cx = spX.value;
     // Preserve the finger's grab offset within the pill instead of
     // re-centring under the cursor -- same "picked up a specific point"
