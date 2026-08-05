@@ -105,6 +105,9 @@
             { opacity: 0, offset: 0 },
             { opacity: 0, offset: 0.1 },
             { opacity: 1, offset: 0.55 },
+            // Explicit hold -- see the ghost animation below for why an
+            // implicit final keyframe isn't reliable here.
+            { opacity: 1, offset: 1 },
           ],
           { duration: GROW_MS, easing: 'ease-out' }
         )
@@ -118,8 +121,23 @@
       // feature has repeatedly shown a gap between Chromium timing and real
       // iPhone timing). Front-loading the fade-out this hard leaves a wide
       // safety margin against that gap instead of just nudging the numbers.
+      // Scales down while it fades, not just a flat opacity change -- matches
+      // how iOS actually scales the icon glyph during the morph, not a plain
+      // crossfade.
       activeAnims.push(
-        ghostEl.animate([{ opacity: 1, offset: 0 }, { opacity: 0, offset: 0.25 }], { duration: GROW_MS, easing: 'ease-in' })
+        ghostEl.animate(
+          [
+            { opacity: 1, transform: 'scale(1)', offset: 0 },
+            { opacity: 0, transform: 'scale(0.6)', offset: 0.25 },
+            // Explicit hold instead of relying on the implicit final
+            // keyframe -- Chromium testing showed the scale actually
+            // climbing back up afterward without this, an artifact of how
+            // an implicit-end keyframe interacts with a whole-animation
+            // easing rather than the flat hold the spec implies.
+            { opacity: 0, transform: 'scale(0.6)', offset: 1 },
+          ],
+          { duration: GROW_MS, easing: 'ease-in' }
+        )
       );
     }
   }
@@ -166,13 +184,17 @@
       // cancels it in the same synchronous block as the real FAB's reveal,
       // so the swap is invisible (both look identical, same position/size/
       // color).
+      // Mirrors growFromRect's ghost: grows into place (0.6 -> 1) while it
+      // fades in, rather than a flat opacity change -- same iOS-style scale
+      // treatment as the icon glyph, just reversed for materializing instead
+      // of dissolving.
       activeAnims.push(
         ghostEl.animate(
           [
-            { opacity: 0, offset: 0 },
-            { opacity: 0, offset: 0.55 },
-            { opacity: 1, offset: 0.95 },
-            { opacity: 1, offset: 1 },
+            { opacity: 0, transform: 'scale(0.6)', offset: 0 },
+            { opacity: 0, transform: 'scale(0.6)', offset: 0.55 },
+            { opacity: 1, transform: 'scale(1)', offset: 0.95 },
+            { opacity: 1, transform: 'scale(1)', offset: 1 },
           ],
           { duration: SHRINK_MS, easing: 'ease-out', fill: 'forwards' }
         )
