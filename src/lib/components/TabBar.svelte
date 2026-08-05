@@ -206,8 +206,15 @@
     detachDragListeners();
     spPop.setTarget(1);
     const i = nearestTabIndexAt(spX.target + baseW / 2);
-    kickNavLoop();
     currentView.set(NAV[i].id);
+    // Explicit, not just reactive: Svelte's writable store skips notifying
+    // subscribers when set() gets the value it already holds, so if the
+    // drag ends back on the tab that was already active, the $effect
+    // watching $currentView (which is what normally calls settleToView to
+    // re-centre the spring) never fires. Without this direct call, the
+    // highlight would freeze wherever the finger let go instead of
+    // snapping to the tab's centre -- the "stuck between two icons" bug.
+    settleToView(NAV[i].id);
   }
   function onPointerUp() {
     if (!dragActive) return;
