@@ -25,15 +25,8 @@
   let activeOriginRect = null;
   let activeAnims = [];
 
-  // Bouncy pop, reused from the tab bar's active-icon animation (TabBar.svelte
-  // /app.css .navtab.active svg) -- same motion language, not a new one-off
-  // feel. Border-radius/background get their own smoother, non-bouncy easing:
-  // an overshooting scale briefly running a hair past 100% is a nice "pop",
-  // but an overshooting border-radius has no sensible meaning (can't go past
-  // 0% or below), so it's animated separately rather than sharing one curve.
   const GROW_MS = 340;
-  const GROW_BOUNCE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
-  const GROW_SMOOTH = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  const GROW_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
   const SHRINK_MS = 450;
   const SHRINK_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
@@ -43,6 +36,22 @@
   function cancelActiveAnims() {
     activeAnims.forEach((a) => a.cancel());
     activeAnims = [];
+  }
+  // Leftover inline overrides from a previous close (see the shrink handoff
+  // below) are cleared here, at the START of the next open, rather than a
+  // fixed delay after closing -- sidesteps ever needing to guess how long the
+  // `openClass` class removal takes to actually reach the DOM. It evidently
+  // isn't always within one requestAnimationFrame on a real iPhone, which is
+  // what caused the "closes twice" bug: clearing the inline overrides on a
+  // timer revealed the still-`open` class for a moment, and when that
+  // class removal finally landed afterwards, THAT played as a second, fully
+  // CSS-transitioned slide-down.
+  function clearInlineOverrides() {
+    if (!sheetEl) return;
+    sheetEl.style.transition = '';
+    sheetEl.style.transform = '';
+    sheetEl.style.borderRadius = '';
+    sheetEl.style.backgroundColor = '';
   }
   function growFromRect(rect) {
     if (!sheetEl || prefersReducedMotion()) return;
@@ -54,14 +63,14 @@
         { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})` },
         { transform: 'translate(0px, 0px) scale(1, 1)' },
       ],
-      { duration: GROW_MS, easing: GROW_BOUNCE }
+      { duration: GROW_MS, easing: GROW_EASE }
     );
     const shapeAnim = sheetEl.animate(
       [
         { borderRadius: '50%', backgroundColor: 'var(--gold)' },
         { borderRadius: '0%', backgroundColor: 'var(--ink)' },
       ],
-      { duration: GROW_MS, easing: GROW_SMOOTH }
+      { duration: GROW_MS, easing: GROW_EASE }
     );
     activeAnims.push(transformAnim, shapeAnim);
     if (trackEl) {
@@ -119,6 +128,7 @@
 
   $effect(() => {
     if (open) {
+      clearInlineOverrides();
       activeOriginRect = originRect;
       openClass = true;
       if (activeOriginRect) growFromRect(activeOriginRect);
@@ -135,23 +145,7 @@
           // resting "closed" look directly via inline style in the very next
           // line, synchronously -- no paint happens between these two
           // statements, so there's no frame where the browser could render
-          // an in-between value. Previously this relied on the `openClass`
-          // class removal (a separate, not-necessarily-synchronous Svelte
-          // state update) having already reached the DOM by the time of
-          // cancellation, which it wasn't always -- that race is what caused
-          // the bug where the shrunk circle flashed without a "+" and the
-          // sheet visibly slid the rest of the way down before the real FAB
-          // reappeared -- reproducible on a real iPhone but never in desktop
-          // Chromium, the same signature as this app's earlier nav-dock
-          // corner-flash bug: a WebKit-specific compositing/layer-promotion
-          // timing quirk. (A forced `sheetEl.offsetHeight` reflow was tried
-          // here as a belt-and-suspenders fix -- it actually broke the clean
-          // instant swap in Chromium too, reintroducing the exact same
-          // visible slide, so it's deliberately NOT here. The permanent
-          // `will-change` on `.add-sheet` below is the actual fix: keeps it
-          // always composited so there's no promote/demote transition for
-          // WebKit to glitch on in the first place, same fix as the nav
-          // dock's corner flash.)
+          // an in-between value.
           cancelActiveAnims();
           if (sheetEl) {
             sheetEl.style.transition = 'none';
@@ -159,14 +153,18 @@
             sheetEl.style.borderRadius = '';
             sheetEl.style.backgroundColor = '';
           }
+          // openClass flips here too, but its class removal reaching the DOM
+          // is NOT what makes the sheet look closed -- the inline styles
+          // above already pin that, and are deliberately left in place
+          // (cleared only at the start of the next open, above) instead of
+          // being cleared on a timer. Clearing them a fixed delay later is
+          // what caused the "closes twice" bug: on a real iPhone the class
+          // removal can take longer than one requestAnimationFrame to reach
+          // the DOM, so clearing the inline overrides on schedule revealed
+          // the still-`open` class for a moment, and when that removal
+          // finally landed afterwards, it played as a second, fully
+          // CSS-transitioned slide-down.
           openClass = false;
-          requestAnimationFrame(() => {
-            if (!sheetEl) return;
-            sheetEl.style.transition = '';
-            sheetEl.style.transform = '';
-            sheetEl.style.borderRadius = '';
-            sheetEl.style.backgroundColor = '';
-          });
         });
       }
     }
