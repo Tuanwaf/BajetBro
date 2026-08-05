@@ -294,8 +294,15 @@ h2.title {
   position: fixed; left: 0; right: 0;
   /* Flush against the safe area's own edge -- as close to the bottom as
      possible while still clearing the home indicator (the inset itself,
-     ~34px on real iPhones, already provides that clearance on its own). */
-  bottom: env(safe-area-inset-bottom, 0px);
+     ~34px on real iPhones, already provides that clearance on its own).
+     That only holds in STANDALONE mode, though: any regular browser tab
+     (Safari, Chrome on iOS/desktop, Android browsers) reports this env()
+     as 0, so without a floor the dock would collapse flush to the literal
+     viewport edge there -- exactly the "stuck like the old bar" look the
+     float was built to get away from. max() guarantees a minimum gap when
+     there's no real inset to rely on, without changing the installed-iPhone
+     case at all (34px already clears 16px, so max() keeps picking that). */
+  bottom: max(env(safe-area-inset-bottom, 0px), 16px);
   display: flex; align-items: center; justify-content: center;
   padding: 0 16px;
   z-index: 40;
