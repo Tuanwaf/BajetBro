@@ -11,7 +11,7 @@ let deferredPrompt = null;
 let initialized = false;
 let waiters = [];
 
-function isStandalone() {
+export function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 function isIOS() {

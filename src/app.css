@@ -62,13 +62,16 @@ html {
      is actually tall enough to scroll. */
   overscroll-behavior-y: auto;
   scrollbar-width: none; /* Firefox: hide the scroll indicator */
-  /* Belt-and-suspenders alongside the viewport meta's user-scalable=no --
-     disables pinch/double-tap zoom at the CSS level too (some browsers are
-     inconsistent about honoring the meta tag alone). Doesn't block normal
-     scroll panning, just zoom gestures. */
-  touch-action: manipulation;
 }
 html::-webkit-scrollbar { display: none; } /* WebKit/Safari: hide it too */
+/* Zoom-blocking only applies once installed to the home screen -- a plain
+   browser tab is still just a website and should keep normal pinch zoom.
+   Belt-and-suspenders alongside main.js's viewport-meta lock-down (some
+   browsers are inconsistent about honoring the meta tag alone). Doesn't
+   block normal scroll panning, just zoom gestures. */
+@media (display-mode: standalone) {
+  html { touch-action: manipulation; }
+}
 button, .chip, .tab, .month-row, .cat-row {
   touch-action: manipulation;
   -webkit-user-select: none;
@@ -114,7 +117,12 @@ body {
    No scrim: confirmed on-device (2026-08-05) that black-translucent doesn't
    force white glyphs -- iOS adapts glyph color to the content behind the
    status bar, same as ondewei.my which uses this exact config. Blur+mask
-   alone are enough for legibility; a dark gradient here was never required. */
+   alone are enough for legibility; a dark gradient here was never required.
+   Blur itself is standalone-only (see media query below) -- in a regular
+   browser tab, Safari/Chrome's own native toolbar already has its own
+   frosted-glass blur, and layering ours on top of that looked wrong; in
+   standalone mode there's no browser chrome at all and no automatic blur
+   from iOS, so this is the only thing giving the status bar that effect. */
 .status-bar-blur {
   position: fixed;
   top: 0;
@@ -123,13 +131,16 @@ body {
   height: calc(env(safe-area-inset-top, 0px) + 14px);
   z-index: 100;
   pointer-events: none;
-  /* EXPERIMENT (2026-08-05): blur disabled to compare with/without. Was:
-     backdrop-filter: blur(6px) saturate(120%);
-     -webkit-backdrop-filter: blur(6px) saturate(120%); */
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 65%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 0%, #000 65%, transparent 100%);
   transform: translateZ(0);
   will-change: transform;
+}
+@media (display-mode: standalone) {
+  .status-bar-blur {
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+  }
 }
 
 .page { display: none; }

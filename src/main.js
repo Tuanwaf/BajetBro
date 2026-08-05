@@ -5,19 +5,33 @@ import db from './lib/db.js';
 import { seedIfNeeded } from './lib/seed.js';
 import { initPersonalizationFlags } from './lib/personalization.js';
 import { startTour } from './lib/tour.js';
-import { initInstallPrompt, waitForInstallResolution } from './lib/installPrompt.js';
+import { initInstallPrompt, waitForInstallResolution, isStandalone } from './lib/installPrompt.js';
 
 // Attached as early as possible -- beforeinstallprompt can fire before the
 // Svelte app even mounts, and this also starts the grace-period timer (see
 // installPrompt.js) that decides how long to give it before giving up.
 initInstallPrompt();
 
-// Belt-and-suspenders against pinch-zoom alongside the viewport meta's
-// user-scalable=no and app.css's touch-action:manipulation -- older iOS
-// Safari versions have been inconsistent about honoring the meta tag alone,
-// and `gesturestart` is WebKit's own pinch-gesture event, so blocking it
-// directly closes that gap. Should feel like a native app, not a webpage.
-document.addEventListener('gesturestart', (e) => e.preventDefault());
+// Zoom is only locked down once installed to the home screen -- it should
+// feel like a native app there, not a webpage, but a regular browser tab
+// (Safari, Chrome) is still just a website and should keep normal pinch
+// zoom. index.html's viewport meta is permissive by default; this locks it
+// down here instead, plus app.css gates its own touch-action:manipulation
+// zoom-blocking behind the same `(display-mode: standalone)` media query.
+if (isStandalone()) {
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (viewport) {
+    viewport.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no'
+    );
+  }
+  // Belt-and-suspenders alongside that meta tag -- older iOS Safari
+  // versions have been inconsistent about honoring it alone, and
+  // `gesturestart` is WebKit's own pinch-gesture event, so blocking it
+  // directly closes that gap.
+  document.addEventListener('gesturestart', (e) => e.preventDefault());
+}
 
 async function init() {
   if (navigator.storage?.persist) {
