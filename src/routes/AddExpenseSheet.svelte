@@ -36,24 +36,20 @@
   const GROW_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)';
   const SHRINK_MS = 450;
   const SHRINK_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
-  // How much smaller than the FAB's exact size the circle dips at the bottom
-  // of its landing bounce -- 0.82 = dips to 82% of target size before
-  // springing back to 100%. Applied as a uniform multiplier on BOTH scaleX
-  // and scaleY (see the explicit bounce keyframes in shrinkToRect below),
-  // not via a bezier overshoot on the raw scale values -- those overshoot in
-  // absolute terms, and since the FAB's ~60px square target comes from
-  // scaling down a 390px-wide but 844px-tall viewport, scaleX and scaleY
-  // shrink by very different absolute amounts. A shared overshoot curve on
-  // the raw values hits height much harder than width (verified via
-  // Playwright: an early attempt at 1.56 collapsed height toward near-zero
-  // while width barely dipped -- a squished oval, not a bounce; dialing that
-  // down to 1.08 fixed the distortion but made the dip genuinely
-  // imperceptible, ~1px, per direct feedback that no bounce was visible at
-  // all). Multiplying the ALREADY-correct target scale by one shared factor
-  // keeps scaleX/scaleY proportional to each other throughout the dip,
-  // however big the dip is, so this can be a clearly visible size change
-  // without the earlier distortion.
-  const BOUNCE_DIP = 0.82;
+  // Matches .navfab:active's own press scale exactly -- the ask was for the
+  // landing to feel like the SAME button-press-and-release the FAB already
+  // has when tapped, not an arbitrary bounce value. Applied as a uniform
+  // multiplier on BOTH scaleX and scaleY (see the explicit bounce keyframes
+  // in shrinkToRect below), not via a bezier overshoot on the raw scale
+  // values -- those overshoot in absolute terms, and since the FAB's ~60px
+  // square target comes from scaling down a 390px-wide but 844px-tall
+  // viewport, scaleX and scaleY shrink by very different absolute amounts. A
+  // shared overshoot curve on the raw values hits height much harder than
+  // width (verified via Playwright: 1.56 collapsed height toward near-zero
+  // while width barely dipped -- a squished oval, not a bounce). Multiplying
+  // the ALREADY-correct target scale by one shared factor keeps scaleX/
+  // scaleY proportional to each other throughout the dip regardless of size.
+  const BOUNCE_DIP = 0.92;
 
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -169,8 +165,11 @@
     const transformAnim = sheetEl.animate(
       [
         { transform: 'translate(0px, 0px) scale(1, 1)', offset: 0, easing: SHRINK_EASE },
-        { transform: landed, offset: 0.82, easing: 'ease-out' },
-        { transform: dipped, offset: 0.91, easing: 'ease-out' },
+        // Dip-and-release easing matches button { transition: transform 0.1s
+        // ease; } app-wide, same as .navfab:active itself -- this is meant
+        // to feel like that exact press-and-release, not a distinct effect.
+        { transform: landed, offset: 0.82, easing: 'ease' },
+        { transform: dipped, offset: 0.91, easing: 'ease' },
         { transform: landed, offset: 1 },
       ],
       { duration: SHRINK_MS, fill: 'forwards' }
