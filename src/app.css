@@ -324,23 +324,30 @@ h2.title {
   -webkit-user-select: none; user-select: none;
 }
 /* Everything except the FAB lives in here so it can be clipped to the pill's
-   own rounded shape. Without this, the black indicator (its own compositing
-   layer, since it's driven by a per-frame transform) isn't clipped against
-   the pill's curved corners -- near the leftmost/rightmost tab, where the
-   indicator sits close to that curve, WebKit would briefly paint its square
-   bounding box unclipped, flashing a small squared-off notch of the pill's
-   own background through the corner for a frame. The FAB stays a direct
-   sibling of .navpill (not in here) since it deliberately pokes 15px above
-   the pill's own box -- clipping this wrapper must not clip that. */
+   own rounded shape. The FAB stays a direct sibling of .navpill (not in
+   here) since it deliberately pokes 15px above the pill's own box --
+   clipping this wrapper must not clip that. `transform: translateZ(0)`
+   forces this clip layer to always be composited (see .nav-indicator below
+   for why "always", not reactively). */
 .navpill-clip {
   position: absolute; inset: 0;
   display: flex; align-items: stretch;
   padding: 7px;
   border-radius: 35px;
   overflow: hidden;
+  transform: translateZ(0);
 }
 /* Solid fill rather than a soft tinted wash -- a stark black pill with white
-   active-tab content reads more "brutal" than a translucent accent glow. */
+   active-tab content reads more "brutal" than a translucent accent glow.
+   `will-change: transform` keeps this permanently on its own GPU layer.
+   Clipping it to .navpill-clip's rounded corner (above) wasn't enough on
+   its own -- the flash is a WebKit layer-promotion glitch, not a missing
+   clip: without will-change, the browser only promotes this element to a
+   composited layer reactively, the moment the rAF loop starts writing to
+   its transform. That promotion instant is exactly when Safari can paint
+   the new layer's square bounds for a frame before the ancestor's clip is
+   correctly intersected against it. Marking it composited up front removes
+   the promotion transition entirely, so there's nothing left to glitch on. */
 .nav-indicator {
   position: absolute; left: 0; top: 7px;
   height: calc(100% - 14px); width: 70px;
@@ -348,6 +355,7 @@ h2.title {
   background: var(--stroke-2);
   z-index: 0;
   pointer-events: none;
+  will-change: transform;
 }
 .navtab {
   position: relative; z-index: 1;
