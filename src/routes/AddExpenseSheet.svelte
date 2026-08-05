@@ -31,7 +31,7 @@
   // an overshooting scale briefly running a hair past 100% is a nice "pop",
   // but an overshooting border-radius has no sensible meaning (can't go past
   // 0% or below), so it's animated separately rather than sharing one curve.
-  const GROW_MS = 620;
+  const GROW_MS = 340;
   const GROW_BOUNCE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
   const GROW_SMOOTH = 'cubic-bezier(0.32, 0.72, 0, 1)';
   const SHRINK_MS = 450;
@@ -141,7 +141,17 @@
           // cancellation, which it wasn't always -- that race is what caused
           // the bug where the shrunk circle flashed without a "+" and the
           // sheet visibly slid the rest of the way down before the real FAB
-          // reappeared.
+          // reappeared -- reproducible on a real iPhone but never in desktop
+          // Chromium, the same signature as this app's earlier nav-dock
+          // corner-flash bug: a WebKit-specific compositing/layer-promotion
+          // timing quirk. (A forced `sheetEl.offsetHeight` reflow was tried
+          // here as a belt-and-suspenders fix -- it actually broke the clean
+          // instant swap in Chromium too, reintroducing the exact same
+          // visible slide, so it's deliberately NOT here. The permanent
+          // `will-change` on `.add-sheet` below is the actual fix: keeps it
+          // always composited so there's no promote/demote transition for
+          // WebKit to glitch on in the first place, same fix as the nav
+          // dock's corner flash.)
           cancelActiveAnims();
           if (sheetEl) {
             sheetEl.style.transition = 'none';
@@ -518,8 +528,14 @@
   /* transform-origin: 0 0 makes the FAB-morph's translate+scale math in the
      script section (see growFromRect/shrinkToRect) land exactly on the FAB's
      rect -- with the default centre origin, scaling wouldn't produce the
-     same top-left-anchored box a getBoundingClientRect() comparison needs. */
-  .add-sheet { overflow: hidden; transform-origin: 0 0; }
+     same top-left-anchored box a getBoundingClientRect() comparison needs.
+     will-change keeps this permanently GPU-composited -- same fix as the nav
+     dock's corner-flash bug (TabBar.svelte/app.css .nav-indicator): without
+     it, WebKit only promotes the element to a layer reactively once the
+     WAAPI animation starts, and that promotion/demotion transition is where
+     it can glitch. Reproduced only on a real iPhone, never in desktop
+     Chromium -- same signature as that earlier bug. */
+  .add-sheet { overflow: hidden; transform-origin: 0 0; will-change: transform, border-radius, background-color; }
   .add-track {
     position: absolute;
     top: 0;
