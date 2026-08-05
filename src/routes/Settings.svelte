@@ -362,6 +362,11 @@
   </div>
 {/if}
 
+<!-- Bumped by hand on every push -- check this against what you were told
+     to expect to confirm the installed app actually picked up the latest
+     deploy, not a stale cached build. -->
+<p class="hint" style="text-align:center; margin-top:22px;">BajetBro v{__APP_VERSION__}</p>
+
 <style>
   .cat-name-input {
     flex: 1;
