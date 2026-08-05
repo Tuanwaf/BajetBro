@@ -111,17 +111,13 @@ body {
 /* Frosted status-bar overlay. Fixed to the viewport; because the document
    (body) scrolls -- not an inner overflow container -- backdrop-filter DOES
    sample the content passing behind the Dynamic Island in the installed PWA.
-   iOS forces WHITE status-bar glyphs here (black-translucent) regardless of
-   in-app theme -- that's a platform limit, not something CSS/JS can flip per
-   theme. Since the app is light now, the scrim has to stay dark enough for
-   those glyphs to read -- but it doesn't need to be AS dark as this started
-   out: checked the actual contrast math, and this opacity still clears
-   ~4.3:1 against the white glyphs (close to the 4.5:1 AA target) while
-   reading as a much softer vignette than a flat dark band sitting on the
-   page at rest. It can't fully disappear -- that's the real tradeoff of
-   forcing legible white text onto a light theme -- but this is meaningfully
-   lighter. The mask fades the whole layer (blur included) out at the bottom
-   so it melts into the sharp content instead of ending on a hard edge. */
+   TESTING (2026-08-05): scrim zeroed out. iOS may actually auto-adapt
+   glyph color to whatever's behind the status bar (a same-config PWA,
+   ondewei.my, shows black glyphs over a light background using this exact
+   black-translucent setup) -- if so, our own dark scrim was likely what
+   was forcing white-looking glyphs, not an iOS platform limit as previously
+   assumed here. Blur+mask stay; only the gradient opacities are zeroed so
+   this is a one-line revert if glyphs turn out unreadable on-device. */
 .status-bar-blur {
   position: fixed;
   top: 0;
@@ -132,8 +128,8 @@ body {
   pointer-events: none;
   background: linear-gradient(
     to bottom,
-    rgba(17, 19, 24, 0.5) 0%,
-    rgba(17, 19, 24, 0.27) 55%,
+    rgba(17, 19, 24, 0) 0%,
+    rgba(17, 19, 24, 0) 55%,
     rgba(17, 19, 24, 0) 100%
   );
   backdrop-filter: blur(6px) saturate(120%);
