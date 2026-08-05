@@ -36,6 +36,21 @@
   const GROW_EASE = 'cubic-bezier(0.65, 0, 0.35, 1)';
   const SHRINK_MS = 450;
   const SHRINK_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  // Only for the shape's transform (position/scale) -- overshoots past the
+  // target then settles back, like a button's press-release squish, so the
+  // circle shrinks a hair smaller than the FAB then springs back to its
+  // exact size. Deliberately a much gentler overshoot than the tab bar's
+  // active-icon pop (1.56) -- this transform's scaleX/scaleY ratios are very
+  // different (the FAB's ~60px square target comes from a 390px-wide but
+  // 844px-tall viewport), so the SAME overshoot curve applied to both axes
+  // doesn't overshoot by the same amount on each -- verified via Playwright
+  // that 1.56 made height briefly collapse to near-zero while width only
+  // dipped modestly, a squished flat oval instead of a clean bounce. 1.08 is
+  // small enough that the mismatch between axes stays imperceptible. Border-
+  // radius/background keep SHRINK_EASE: an overshoot past 50% border-radius
+  // has no visible effect once it's already a circle, so bouncing it would
+  // just be wasted motion.
+  const SHRINK_BOUNCE = 'cubic-bezier(0.34, 1.08, 0.64, 1)';
 
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -151,7 +166,7 @@
         { transform: 'translate(0px, 0px) scale(1, 1)' },
         { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})` },
       ],
-      { duration: SHRINK_MS, easing: SHRINK_EASE, fill: 'forwards' }
+      { duration: SHRINK_MS, easing: SHRINK_BOUNCE, fill: 'forwards' }
     );
     const shapeAnim = sheetEl.animate(
       [
