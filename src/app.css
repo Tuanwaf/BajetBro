@@ -316,14 +316,28 @@ h2.title {
   position: relative;
   flex: 1; min-width: 0;
   height: 70px;
-  display: flex; align-items: stretch;
-  padding: 7px;
   border-radius: 35px;
   background: var(--panel);
   border: 2px solid var(--stroke-2);
   box-shadow: 4px 4px 0 var(--stroke-2);
   touch-action: none;
   -webkit-user-select: none; user-select: none;
+}
+/* Everything except the FAB lives in here so it can be clipped to the pill's
+   own rounded shape. Without this, the black indicator (its own compositing
+   layer, since it's driven by a per-frame transform) isn't clipped against
+   the pill's curved corners -- near the leftmost/rightmost tab, where the
+   indicator sits close to that curve, WebKit would briefly paint its square
+   bounding box unclipped, flashing a small squared-off notch of the pill's
+   own background through the corner for a frame. The FAB stays a direct
+   sibling of .navpill (not in here) since it deliberately pokes 15px above
+   the pill's own box -- clipping this wrapper must not clip that. */
+.navpill-clip {
+  position: absolute; inset: 0;
+  display: flex; align-items: stretch;
+  padding: 7px;
+  border-radius: 35px;
+  overflow: hidden;
 }
 /* Solid fill rather than a soft tinted wash -- a stark black pill with white
    active-tab content reads more "brutal" than a translucent accent glow. */
