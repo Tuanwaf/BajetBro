@@ -18,6 +18,11 @@
   --red: #e5323b;
   --red-dim: rgba(229, 50, 59, 0.16);
   --good: #12a150;
+  /* Same warm yellow-gold already used for the Saving category/goal color
+     elsewhere (seed.js, GOAL_COLORS) -- reused here as the app-wide "edit"
+     button color so it's a color already native to the palette, not a new
+     one-off hue. */
+  --yellow: #e7b34e;
   /* Text/icon color for anything sitting ON TOP of --gold (buttons, the FAB,
      the tour's "Next" pill, etc). Checked the actual contrast ratio rather
      than eyeballing it: dark ink gives ~6.3:1 against this orange-red vs
@@ -435,6 +440,23 @@ h2.title {
    the small edit/delete icon-btns that reuse the same base class -- border
    and shadow stay black, only background+text flip to red. */
 .icon-btn[aria-label="Close"] {
+  background: var(--red); color: #fff;
+}
+/* Same idea for every row-level Edit/Delete icon-btn pair (transactions,
+   dividends, loans, goal contributions/spends, additional income, etc.) --
+   their aria-labels all start with "Edit"/"Delete" (e.g. "Edit dividend",
+   "Delete loan"), so a prefix selector catches every instance app-wide in
+   one place instead of touching each call site. "Clear paid-back amount"
+   is the one delete-equivalent action that doesn't literally say "Delete"
+   (it resets a flag rather than removing a row) but uses the exact same
+   trash-can icon, so it's grouped with the red rule too. The disabled
+   "Only this cycle's ... can be edited" placeholders don't match either
+   prefix, so they're correctly left alone. */
+.icon-btn[aria-label^="Edit"] {
+  background: var(--yellow); color: var(--accent-ink);
+}
+.icon-btn[aria-label^="Delete"],
+.icon-btn[aria-label="Clear paid-back amount"] {
   background: var(--red); color: #fff;
 }
 .sheet-body { flex: 1; overflow-y: auto; padding: 8px 20px 24px; scrollbar-width: none; }
