@@ -352,7 +352,7 @@
 </button>
 
 {#if pendingImportFile}
-  <div class="card" style="margin-top:12px; border-color:var(--red);">
+  <div class="card" style="margin-top:12px; border-color:var(--red); box-shadow: 4px 4px 0 var(--red);">
     <div class="cat-name-row" style="margin-bottom:8px;"><span>Replace all local data?</span></div>
     <p class="hint" style="margin:0 0 14px;">Importing "{pendingImportFile.name}" will overwrite everything currently stored on this device. This can't be undone.</p>
     <div style="display:flex; gap:10px;">

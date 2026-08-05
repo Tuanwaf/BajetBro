@@ -92,11 +92,11 @@
   </div>
   <div class="sheet-body">
     <div class="loan-summary">
-      <div class="card loan-stat" style="border-color:var(--good);">
+      <div class="card loan-stat" style="border-color:var(--good); box-shadow: 4px 4px 0 var(--good);">
         <span style="font-size:12px; color:var(--lo); font-weight:600;">Net you lent</span>
         <span class="num" style="font-size:18px; font-weight:700; color:var(--good);">RM {fmt(lentTotal)}</span>
       </div>
-      <div class="card loan-stat" style="border-color:var(--red);">
+      <div class="card loan-stat" style="border-color:var(--red); box-shadow: 4px 4px 0 var(--red);">
         <span style="font-size:12px; color:var(--lo); font-weight:600;">Net you owe</span>
         <span class="num" style="font-size:18px; font-weight:700; color:var(--red);">RM {fmt(owedTotal)}</span>
       </div>

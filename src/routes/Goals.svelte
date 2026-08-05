@@ -320,7 +320,7 @@
 {#if $tabungHajiEnabled}
 <div class="section-hd"><h3>Where it grows</h3><span>savings &amp; investments</span></div>
 {#if th}
-  <div class="balance-card" style="margin-bottom:10px;">
+  <div class="balance-card" style="margin-bottom:10px; border-color: var(--good); box-shadow: 5px 5px 0 var(--good);">
     <div class="balance-top"><div class="lbl">Tabung Haji</div><span class="pill good">Active</span></div>
     <div class="balance-amt"><span class="cur">RM</span>{fmt(thTotal)}</div>
     <div class="balance-row">
@@ -637,7 +637,7 @@
   </div>
   <div class="sheet-body">
     <p class="sub" style="margin-top:4px;">Money pulled from your savings pool for personal buys — logged when you choose "Spend from savings". Edit or remove if something's off.</p>
-    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:var(--gold);">
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:var(--gold); box-shadow: 4px 4px 0 var(--gold);">
       <span style="font-size:13px; color:var(--lo); font-weight:600;">Total spent from savings</span>
       <span class="num" style="font-size:18px; font-weight:700; color:var(--good);">RM {fmt(personalSpentTotal)}</span>
     </div>

@@ -95,7 +95,7 @@
     <span style="width:38px;"></span>
   </div>
   <div class="sheet-body">
-    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; border-color: {BUFFER_COLOR}; box-shadow: 4px 4px 0 {BUFFER_COLOR};">
       <div style="display:flex; align-items:center; gap:8px;">
         <span class="dot" style="background:{BUFFER_COLOR}"></span>
         <span style="font-size:13.5px; color:var(--lo);">Buffer · {label} total</span>

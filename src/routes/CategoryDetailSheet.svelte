@@ -144,7 +144,7 @@
   </div>
   <div class="sheet-body">
     {#if category}
-      <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+      <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; border-color: {category.color}; box-shadow: 4px 4px 0 {category.color};">
         <div style="display:flex; align-items:center; gap:8px;">
           <span class="dot" style="background:{category.color}"></span>
           <span style="font-size:13.5px; color:var(--lo);">Actual / Planned</span>

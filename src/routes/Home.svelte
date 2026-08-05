@@ -118,7 +118,7 @@
   <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
   <p class="sub">{month.label} {year}</p>
 
-  <div class="balance-card" data-guide="balance-remaining">
+  <div class="balance-card" data-guide="balance-remaining" style="border-color: var(--gold); box-shadow: 5px 5px 0 var(--gold);">
     <div class="balance-top">
       <div class="lbl">Remaining this month</div>
       <span class="pill" class:good={totalRemaining >= 0} class:bad={totalRemaining < 0}>
@@ -298,7 +298,7 @@
     background: var(--panel);
     border: 2px solid var(--good);
     border-radius: 16px;
-    box-shadow: 3px 3px 0 var(--stroke-2);
+    box-shadow: 3px 3px 0 var(--good);
     padding: 14px 16px;
     margin-bottom: 16px;
     color: var(--hi);

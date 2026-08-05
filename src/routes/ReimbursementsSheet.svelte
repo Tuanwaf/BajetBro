@@ -53,7 +53,7 @@
     <span style="width:38px;"></span>
   </div>
   <div class="sheet-body">
-    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:var(--good);">
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:var(--good); box-shadow: 4px 4px 0 var(--good);">
       <span style="font-size:13px; color:var(--lo); font-weight:600;">Total credited this month</span>
       <span class="num" style="font-size:18px; font-weight:700; color:var(--good);">RM {fmt(total)}</span>
     </div>
