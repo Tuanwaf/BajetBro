@@ -23,41 +23,60 @@
   let trackEl = $state(null);
   let openClass = $state(false);
   let activeOriginRect = null;
-  let shapeAnim = null;
-  let contentAnim = null;
+  let activeAnims = [];
+
+  // Bouncy pop, reused from the tab bar's active-icon animation (TabBar.svelte
+  // /app.css .navtab.active svg) -- same motion language, not a new one-off
+  // feel. Border-radius/background get their own smoother, non-bouncy easing:
+  // an overshooting scale briefly running a hair past 100% is a nice "pop",
+  // but an overshooting border-radius has no sensible meaning (can't go past
+  // 0% or below), so it's animated separately rather than sharing one curve.
+  const GROW_MS = 620;
+  const GROW_BOUNCE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+  const GROW_SMOOTH = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  const SHRINK_MS = 450;
+  const SHRINK_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
   function cancelActiveAnims() {
-    shapeAnim?.cancel();
-    contentAnim?.cancel();
-    shapeAnim = null;
-    contentAnim = null;
+    activeAnims.forEach((a) => a.cancel());
+    activeAnims = [];
   }
   function growFromRect(rect) {
     if (!sheetEl || prefersReducedMotion()) return;
     const vw = window.innerWidth, vh = window.innerHeight;
     const sx = rect.width / vw, sy = rect.height / vh;
     cancelActiveAnims();
-    shapeAnim = sheetEl.animate(
+    const transformAnim = sheetEl.animate(
       [
-        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`, borderRadius: '50%', backgroundColor: 'var(--gold)' },
-        { transform: 'translate(0px, 0px) scale(1, 1)', borderRadius: '0%', backgroundColor: 'var(--ink)' },
+        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})` },
+        { transform: 'translate(0px, 0px) scale(1, 1)' },
       ],
-      { duration: 480, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' }
+      { duration: GROW_MS, easing: GROW_BOUNCE }
     );
+    const shapeAnim = sheetEl.animate(
+      [
+        { borderRadius: '50%', backgroundColor: 'var(--gold)' },
+        { borderRadius: '0%', backgroundColor: 'var(--ink)' },
+      ],
+      { duration: GROW_MS, easing: GROW_SMOOTH }
+    );
+    activeAnims.push(transformAnim, shapeAnim);
     if (trackEl) {
-      // Content fades in once the shape's grown past its first ~45% -- text
+      // Content fades in once the shape's grown past its first ~40% -- text
       // and the keypad would just look like squished noise inside a
       // FAB-sized circle if it were visible from the very start.
-      contentAnim = trackEl.animate(
-        [
-          { opacity: 0, offset: 0 },
-          { opacity: 0, offset: 0.45 },
-          { opacity: 1, offset: 1 },
-        ],
-        { duration: 480, easing: 'ease-out' }
+      activeAnims.push(
+        trackEl.animate(
+          [
+            { opacity: 0, offset: 0 },
+            { opacity: 0, offset: 0.4 },
+            { opacity: 1, offset: 1 },
+          ],
+          { duration: GROW_MS, easing: 'ease-out' }
+        )
       );
     }
   }
@@ -66,26 +85,36 @@
     const vw = window.innerWidth, vh = window.innerHeight;
     const sx = rect.width / vw, sy = rect.height / vh;
     cancelActiveAnims();
-    shapeAnim = sheetEl.animate(
+    const transformAnim = sheetEl.animate(
       [
-        { transform: 'translate(0px, 0px) scale(1, 1)', borderRadius: '0%', backgroundColor: 'var(--ink)' },
-        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`, borderRadius: '50%', backgroundColor: 'var(--gold)' },
+        { transform: 'translate(0px, 0px) scale(1, 1)' },
+        { transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})` },
       ],
-      { duration: 420, easing: 'cubic-bezier(0.32, 0.72, 0, 1)', fill: 'forwards' }
+      { duration: SHRINK_MS, easing: SHRINK_EASE, fill: 'forwards' }
+    );
+    const shapeAnim = sheetEl.animate(
+      [
+        { borderRadius: '0%', backgroundColor: 'var(--ink)' },
+        { borderRadius: '50%', backgroundColor: 'var(--gold)' },
+      ],
+      { duration: SHRINK_MS, easing: SHRINK_EASE, fill: 'forwards' }
     );
     if (trackEl) {
-      contentAnim = trackEl.animate(
-        [
-          { opacity: 1, offset: 0 },
-          { opacity: 0, offset: 0.4 },
-          { opacity: 0, offset: 1 },
-        ],
-        { duration: 420, easing: 'ease-in' }
+      activeAnims.push(
+        trackEl.animate(
+          [
+            { opacity: 1, offset: 0 },
+            { opacity: 0, offset: 0.4 },
+            { opacity: 0, offset: 1 },
+          ],
+          { duration: SHRINK_MS, easing: 'ease-in' }
+        )
       );
     }
+    activeAnims.push(transformAnim, shapeAnim);
     // Cancelled (superseded by a newer open/close) resolves same as finished
     // -- either way the caller just wants to know it's done reacting to it.
-    return shapeAnim.finished.catch(() => {});
+    return Promise.all([transformAnim.finished, shapeAnim.finished]).catch(() => {});
   }
 
   $effect(() => {
@@ -99,14 +128,35 @@
         openClass = false;
       } else {
         shrinkToRect(rect).then(() => {
-          // Snap to the closed state with no transition, then restore it --
-          // otherwise the CSS class flip would trigger its own translateY
-          // slide-down, visibly popping the just-shrunk circle back to full
-          // size for a frame before sliding it away.
-          if (sheetEl) sheetEl.style.transition = 'none';
-          openClass = false;
+          // Cancel the WAAPI animations FIRST -- active Animations (even
+          // held via fill:'forwards') take precedence over inline style in
+          // the CSS cascade, so setting inline style before cancelling
+          // wouldn't visually do anything yet. Once cancelled, pin the exact
+          // resting "closed" look directly via inline style in the very next
+          // line, synchronously -- no paint happens between these two
+          // statements, so there's no frame where the browser could render
+          // an in-between value. Previously this relied on the `openClass`
+          // class removal (a separate, not-necessarily-synchronous Svelte
+          // state update) having already reached the DOM by the time of
+          // cancellation, which it wasn't always -- that race is what caused
+          // the bug where the shrunk circle flashed without a "+" and the
+          // sheet visibly slid the rest of the way down before the real FAB
+          // reappeared.
           cancelActiveAnims();
-          if (sheetEl) requestAnimationFrame(() => { sheetEl.style.transition = ''; });
+          if (sheetEl) {
+            sheetEl.style.transition = 'none';
+            sheetEl.style.transform = 'translateY(100%)';
+            sheetEl.style.borderRadius = '';
+            sheetEl.style.backgroundColor = '';
+          }
+          openClass = false;
+          requestAnimationFrame(() => {
+            if (!sheetEl) return;
+            sheetEl.style.transition = '';
+            sheetEl.style.transform = '';
+            sheetEl.style.borderRadius = '';
+            sheetEl.style.backgroundColor = '';
+          });
         });
       }
     }
