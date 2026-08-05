@@ -21,6 +21,7 @@
   // link open this sheet without a FAB to morph from.
   let sheetEl = $state(null);
   let trackEl = $state(null);
+  let ghostEl = $state(null);
   let openClass = $state(false);
   let activeOriginRect = null;
   let activeAnims = [];
@@ -53,6 +54,21 @@
     sheetEl.style.borderRadius = '';
     sheetEl.style.backgroundColor = '';
   }
+  // The real FAB is fully hidden behind the (opaque) sheet for the entire
+  // transition, so without this there's nothing playing the "+" glyph's part
+  // of the crossfade at all -- iOS overlays the launching app's real content
+  // with the actual home-screen icon glyph fading out (and the reverse on
+  // close), not a hard cut from icon to content. `.fab-ghost` is a sibling of
+  // `.add-sheet`, not a descendant -- it has to live outside that element's
+  // own scale transform, or it would shrink/grow along with the sheet
+  // instead of staying pinned at the FAB's real on-screen size throughout.
+  function positionGhost(rect) {
+    if (!ghostEl) return;
+    ghostEl.style.left = rect.left + 'px';
+    ghostEl.style.top = rect.top + 'px';
+    ghostEl.style.width = rect.width + 'px';
+    ghostEl.style.height = rect.height + 'px';
+  }
   function growFromRect(rect) {
     if (!sheetEl || prefersReducedMotion()) return;
     const vw = window.innerWidth, vh = window.innerHeight;
@@ -74,18 +90,24 @@
     );
     activeAnims.push(transformAnim, shapeAnim);
     if (trackEl) {
-      // Content fades in once the shape's grown past its first ~40% -- text
-      // and the keypad would just look like squished noise inside a
-      // FAB-sized circle if it were visible from the very start.
+      // Content starts fading in fairly early (15%) and overlaps with the
+      // ghost "+" fading out below -- a real crossfade, not a hard cut once
+      // the shape's merely "big enough".
       activeAnims.push(
         trackEl.animate(
           [
             { opacity: 0, offset: 0 },
-            { opacity: 0, offset: 0.4 },
-            { opacity: 1, offset: 1 },
+            { opacity: 0, offset: 0.15 },
+            { opacity: 1, offset: 0.65 },
           ],
           { duration: GROW_MS, easing: 'ease-out' }
         )
+      );
+    }
+    if (ghostEl) {
+      positionGhost(rect);
+      activeAnims.push(
+        ghostEl.animate([{ opacity: 1, offset: 0 }, { opacity: 0, offset: 0.45 }], { duration: GROW_MS, easing: 'ease-in' })
       );
     }
   }
@@ -109,6 +131,9 @@
       { duration: SHRINK_MS, easing: SHRINK_EASE, fill: 'forwards' }
     );
     if (trackEl) {
+      // Unchanged from before -- this timing (content visible until 40%
+      // elapsed, which given the deceleration curve is still a fairly large
+      // shape) is what already read as smooth per feedback.
       activeAnims.push(
         trackEl.animate(
           [
@@ -117,6 +142,26 @@
             { opacity: 0, offset: 1 },
           ],
           { duration: SHRINK_MS, easing: 'ease-in' }
+        )
+      );
+    }
+    if (ghostEl) {
+      positionGhost(rect);
+      // Starts fading in a little before content is fully gone (35% vs
+      // content's 40%) so there's a brief overlap there too, then finishes
+      // becoming fully visible before the shape reaches FAB size -- fill:
+      // 'forwards' holds it at opacity 1 until the close handoff cancels it
+      // in the same synchronous block as the real FAB's reveal, so the swap
+      // is invisible (both look identical, same position/size/color).
+      activeAnims.push(
+        ghostEl.animate(
+          [
+            { opacity: 0, offset: 0 },
+            { opacity: 0, offset: 0.35 },
+            { opacity: 1, offset: 0.85 },
+            { opacity: 1, offset: 1 },
+          ],
+          { duration: SHRINK_MS, easing: 'ease-out', fill: 'forwards' }
         )
       );
     }
@@ -382,6 +427,12 @@
   }
 </script>
 
+<!-- Sibling of .add-sheet, not a child -- see positionGhost/growFromRect/
+     shrinkToRect in the script for why. -->
+<div class="fab-ghost" bind:this={ghostEl} aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+</div>
+
 <div class="sheet add-sheet" class:open={openClass} bind:this={sheetEl}>
   <div class="add-track" class:step2={step === 2} bind:this={trackEl}>
 
@@ -534,6 +585,20 @@
      it can glitch. Reproduced only on a real iPhone, never in desktop
      Chromium -- same signature as that earlier bug. */
   .add-sheet { overflow: hidden; transform-origin: 0 0; will-change: transform, border-radius, background-color; }
+  /* Fixed at the FAB's exact rect (set imperatively in JS -- see
+     positionGhost) and NOT a descendant of .add-sheet, so its size stays
+     pinned at the real FAB's on-screen size throughout, unaffected by the
+     sheet's own scale transform. z-index above the sheet so the glyph
+     stays legible against whatever color the sheet is mid-crossfade. */
+  .fab-ghost {
+    position: fixed;
+    z-index: 61;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent-ink);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .fab-ghost svg { width: 24px; height: 24px; }
   .add-track {
     position: absolute;
     top: 0;
