@@ -368,17 +368,6 @@
     {/if}
   </div>
 {/if}
-
-<div class="card" style="opacity:0.6; border-style:dashed;">
-  <div style="display:flex; justify-content:space-between; align-items:center;">
-    <div>
-      <div style="font-weight:700; font-size:14px;">ASB</div>
-      <div style="font-size:11px; color:var(--dim); margin-top:2px;">Planned · higher historical dividend</div>
-    </div>
-    <span class="pill neutral">Not started</span>
-  </div>
-</div>
-<p class="hint">Once an ASB account opens, it becomes a second growth vehicle here — same pattern as Tabung Haji.</p>
 {/if}
 
 <!-- ===================== GOAL DETAIL SHEET ===================== -->

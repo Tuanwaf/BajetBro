@@ -221,7 +221,7 @@
 </div>
 
 {#if month}
-  <div class="section-hd" style="margin-top:6px;"><h3>Salary baseline</h3></div>
+  <div class="section-hd"><h3>Salary baseline</h3></div>
   <div class="card" data-guide="settings-salary" style="display:flex; align-items:center; justify-content:space-between;">
     <span style="font-size:13.5px; color:var(--lo);">Monthly salary</span>
     <input class="set-amt" style="width:100px;" value={month.income.toFixed(2)} onchange={updateIncome} />
@@ -264,7 +264,7 @@
 
     <div style="display:flex; gap:8px; margin-top:10px;">
       <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={additionalIncomeAmount} style="flex:1;" />
-      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px;" onclick={addAdditionalIncome}>Add</button>
+      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px; background:var(--good); color:#fff;" onclick={addAdditionalIncome}>Add</button>
     </div>
     <input class="note-input" placeholder="Note (optional)" bind:value={additionalIncomeNote} style="margin-top:8px;" />
   </div>
@@ -325,7 +325,7 @@
     {/each}
     <div style="display:flex; gap:8px; margin-top:10px;">
       <input class="note-input" placeholder="New label, e.g. Gifts" bind:value={newBufferLabel} style="flex:1;" onkeydown={(e) => e.key === 'Enter' && addBufferLabel()} />
-      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px;" onclick={addBufferLabel}>Add</button>
+      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px; background:var(--good); color:#fff;" onclick={addBufferLabel}>Add</button>
     </div>
   </div>
   <p class="hint" style="margin-left:4px;">These are the quick-pick chips shown when logging a Buffer expense — you can still type a one-off custom label there too.</p>
@@ -333,11 +333,11 @@
 
 <div class="section-hd"><h3>Backup &amp; transfer</h3><span>move to another device</span></div>
 <div class="card" data-guide="settings-backup" style="display:flex; flex-direction:column; gap:10px;">
-  <button class="io-btn" onclick={handleExport}>
+  <button class="io-btn" style="background:var(--gold); color:var(--accent-ink);" onclick={handleExport}>
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 15V3M7 8l5-5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Export backup (.json)
   </button>
-  <label class="io-btn" style="cursor:pointer;">
+  <label class="io-btn" style="cursor:pointer; background:var(--gold); color:var(--accent-ink);">
     <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12M7 10l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Import backup
     <input type="file" accept=".json,application/json" onchange={handlePickFile} disabled={importing} style="display:none" />
@@ -346,7 +346,7 @@
 </div>
 
 <div class="section-hd"><h3>Help</h3></div>
-<button class="io-btn" onclick={startTour}>
+<button class="io-btn" style="background:var(--good); color:#fff;" onclick={startTour}>
   <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 9a2.5 2.5 0 0 1 4.8 1c0 1.5-2.3 1.8-2.3 3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="16.6" r="0.9" fill="currentColor"/></svg>
   Replay the guided tour
 </button>

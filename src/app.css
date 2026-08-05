@@ -272,7 +272,10 @@ h2.title {
   width: 100%; margin-top: 20px; padding: 13px 0;
   border-radius: 16px; border: 2px solid var(--stroke-2);
   box-shadow: 3px 3px 0 var(--stroke-2);
-  background: var(--panel); color: var(--lo);
+  /* Same primary-action colors as .save-btn (the "Start {month}" button) --
+     border/shadow stay black, only background+text change, so the two
+     bookend actions of a cycle read as the same kind of button. */
+  background: var(--gold); color: var(--accent-ink);
   font-family: var(--body); font-size: 13px; font-weight: 700;
 }
 .end-month-btn svg { width: 15px; height: 15px; }
@@ -426,6 +429,13 @@ h2.title {
   box-shadow: 2px 2px 0 var(--stroke-2);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+}
+/* Every sheet's dismiss (X) button shares this exact aria-label across the
+   app, so one attribute-selector rule catches all of them without touching
+   the small edit/delete icon-btns that reuse the same base class -- border
+   and shadow stay black, only background+text flip to red. */
+.icon-btn[aria-label="Close"] {
+  background: var(--red); color: #fff;
 }
 .sheet-body { flex: 1; overflow-y: auto; padding: 8px 20px 24px; scrollbar-width: none; }
 .sheet-body::-webkit-scrollbar { display: none; }
