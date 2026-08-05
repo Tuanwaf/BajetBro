@@ -535,6 +535,58 @@ h2.title {
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ---------- install banner ---------- */
+/* Bottom offset clears the floating nav dock (its own height plus the FAB's
+   15px overhang above it) regardless of the device's own safe-area inset,
+   so this sits correctly on both notch-style iPhones and gesture-nav
+   Android phones. */
+.install-banner {
+  position: fixed;
+  left: 16px; right: 16px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  z-index: 70;
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--panel);
+  border: 2px solid var(--stroke-2);
+  border-radius: 18px;
+  box-shadow: 4px 4px 0 var(--stroke-2);
+  padding: 14px 16px;
+  animation: install-in 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes install-in {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.install-icon {
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  border-radius: 12px;
+  background: var(--gold-dim);
+  color: var(--gold);
+  display: flex; align-items: center; justify-content: center;
+}
+.install-icon svg { width: 20px; height: 20px; }
+.install-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.install-msg { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--hi); }
+.install-actions { display: flex; align-items: center; gap: 8px; }
+.install-btn {
+  background: var(--gold); color: var(--accent-ink);
+  border: 2px solid var(--stroke-2); border-radius: 12px;
+  padding: 7px 16px; font-size: 13px; font-weight: 700;
+  box-shadow: 2px 2px 0 var(--stroke-2);
+}
+.install-later {
+  background: none; border: none; color: var(--dim);
+  font-size: 13px; font-weight: 600; padding: 7px 4px;
+}
+.install-x {
+  flex-shrink: 0;
+  width: 26px; height: 26px; margin-top: -2px; margin-right: -4px;
+  border-radius: 50%; background: none; border: none; color: var(--dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.install-x svg { width: 14px; height: 14px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
