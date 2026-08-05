@@ -267,7 +267,7 @@
 <h2 class="title">Goals</h2>
 <p class="sub">Save up, then put it where it counts.</p>
 
-<div class="balance-card" data-guide="goals-pool" style="border-color:var(--gold);">
+<div class="balance-card" data-guide="goals-pool" style="box-shadow: 5px 5px 0 var(--gold);">
   <div class="balance-top"><div class="lbl">Ready to allocate</div></div>
   <div class="balance-amt" style="color:var(--gold);"><span class="cur">RM</span>{fmt(pool)}</div>
   <div style="font-size:12px; color:var(--lo); position:relative; z-index:1;">
@@ -285,7 +285,7 @@
   {@const alloc = goalAllocated(g)}
   {@const reached = goalReached(g)}
   {@const pct = g.target > 0 ? Math.min(100, Math.round((alloc / g.target) * 100)) : 0}
-  <div class="card goal-card" class:reached style="border-color:{g.color};" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
+  <div class="card goal-card" class:reached style="box-shadow: 4px 4px 0 {g.color};" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
     <div class="goal-top">
       <span class="goal-name"><span class="dot" style="background:{g.color}"></span>{g.label}</span>
       <span class="goal-nums"><b class="num">{fmt(alloc)}</b> / {fmt(g.target)}</span>
@@ -613,7 +613,7 @@
     <p class="sub" style="margin-top:4px;">Goals you've spent or completed.</p>
     {#each closedGoals as g (g.id)}
       {@const alloc = goalAllocated(g)}
-      <div class="card goal-card closed" style="border-color:{g.color};" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
+      <div class="card goal-card closed" style="box-shadow: 4px 4px 0 {g.color};" onclick={() => openDetail(g)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openDetail(g)}>
         <div class="goal-top">
           <span class="goal-name"><span class="dot" style="background:{g.color}"></span>{g.label}</span>
           <span class="goal-nums"><b class="num">{fmt(alloc)}</b> / {fmt(g.target)}</span>
@@ -681,7 +681,6 @@
   .goal-state { font-size: 11.5px; font-family: var(--mono); color: var(--dim); }
   .goal-state.done { color: var(--good); font-family: var(--body); font-weight: 700; }
   .goal-action { background: none; border: 1.5px solid var(--stroke-2); border-radius: 12px; padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--gold); font-family: var(--body); }
-  .goal-card.reached { border-color: var(--good); }
   .goal-card.closed { opacity: 0.55; }
   .goal-card.closed .goal-name { color: var(--lo); }
 
