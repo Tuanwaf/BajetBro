@@ -5,6 +5,12 @@
   let total = TOUR_STEPS.length;
 
   let rect = $state(null);
+  // Whether the spotlight hole should actually pass clicks through to the
+  // real element underneath -- true for 'navigate' steps (the user must tap
+  // the target) and for text inputs (the onboarding steps double as a form,
+  // typed into live). Every other 'info' step is purely narration, so its
+  // hole is visually cut but still click-blocked -- see .guide-hole-block.
+  let interactive = $state(false);
   let findAttempts = 0;
   let findTimer;
   let waitTimer;
@@ -24,7 +30,18 @@
       return;
     }
     findAttempts = 0;
-    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    interactive = step.kind === 'navigate' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+    // Only force a scroll when the target genuinely isn't visible -- on a
+    // short page (e.g. the 3-field onboarding form) the target already sits
+    // fully on-screen, and scrollIntoView({block:'center'}) still nudges the
+    // document by a few px looking for perfect centering. On iOS that tiny
+    // forced scroll on a non-overflowing page can trigger a rubber-band
+    // overscroll that gets stuck, showing blank space below the nav dock.
+    const pre = el.getBoundingClientRect();
+    const fullyVisible = pre.top >= 0 && pre.bottom <= window.innerHeight;
+    if (!fullyVisible) {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
     // Let scroll settle a frame before measuring.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const r = el.getBoundingClientRect();
@@ -62,9 +79,22 @@
     resizeHandler = () => measure();
     window.addEventListener('resize', resizeHandler);
     window.addEventListener('scroll', resizeHandler, true);
+    // iOS Safari resizes the visual viewport (not the layout viewport) when
+    // the on-screen keyboard opens/closes, so window's own 'resize' never
+    // fires for that -- without this, the ring stays put at its pre-keyboard
+    // position while the page (and the input) shift up underneath it.
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', resizeHandler);
+      vv.addEventListener('scroll', resizeHandler);
+    }
     return () => {
       window.removeEventListener('resize', resizeHandler);
       window.removeEventListener('scroll', resizeHandler, true);
+      if (vv) {
+        vv.removeEventListener('resize', resizeHandler);
+        vv.removeEventListener('scroll', resizeHandler);
+      }
     };
   });
 
@@ -104,6 +134,9 @@
         100% 100%, 100% 0%
       );"></div>
       <div class="guide-ring" style="top:{rect.top}px; left:{rect.left}px; width:{rect.width}px; height:{rect.height}px;"></div>
+      {#if !interactive}
+        <div class="guide-hole-block" style="top:{rect.top}px; left:{rect.left}px; width:{rect.width}px; height:{rect.height}px;"></div>
+      {/if}
     {:else}
       <div class="guide-dim"></div>
     {/if}
@@ -135,7 +168,11 @@
 
 <style>
   .guide-root { position: fixed; inset: 0; z-index: 20000; pointer-events: none; }
-  .guide-dim { position: absolute; inset: 0; background: rgba(6, 7, 10, 0.78); transition: clip-path 0.25s ease; }
+  /* auto (not the inherited none) so the dimmed area actually blocks taps on
+     the real page underneath -- the clip-path hole is the only part of this
+     element that isn't hit-tested, which is what lets a 'navigate' step's
+     target (or an onboarding input) stay tappable/typable through the hole. */
+  .guide-dim { position: absolute; inset: 0; background: rgba(6, 7, 10, 0.78); transition: clip-path 0.25s ease; pointer-events: auto; }
   .guide-ring {
     position: absolute;
     border: 2px solid var(--gold);
@@ -143,6 +180,11 @@
     box-shadow: 0 0 0 4px var(--gold-dim);
     transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
   }
+  /* Sits exactly over the spotlight hole for purely-informational steps --
+     the hole in .guide-dim is visually transparent but also un-hit-testable,
+     so without this a "just look at this" step would let taps fall straight
+     through to the real card/button it's merely narrating. */
+  .guide-hole-block { position: absolute; pointer-events: auto; background: transparent; }
   .guide-card {
     position: absolute;
     pointer-events: auto;
