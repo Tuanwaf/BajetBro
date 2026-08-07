@@ -26,9 +26,23 @@ function updateAppVh() {
   const h = window.visualViewport?.height ?? window.innerHeight;
   document.documentElement.style.setProperty('--app-vh', `${h}px`);
 }
+// The keyboard's own open/close slide fires MANY visualViewport 'resize'
+// events over its ~250-300ms animation, one per intermediate height as it
+// moves. Calling updateAppVh() live on every one of those (traced via
+// frame-by-frame screen recording on 2026-08-07) made the nav dock/onboard
+// layout visibly "chase" the keyboard in real time instead of just landing
+// on the right spot -- that's the slow scroll that kept showing up right
+// as the keyboard closed. Debouncing means only the FINAL height (after
+// the keyboard's animation has actually finished) ever gets applied, so
+// the layout jumps once, straight to the correct end state.
+let appVhDebounce;
+function scheduleAppVhUpdate() {
+  clearTimeout(appVhDebounce);
+  appVhDebounce = setTimeout(updateAppVh, 120);
+}
 updateAppVh();
-window.addEventListener('resize', updateAppVh);
-window.visualViewport?.addEventListener('resize', updateAppVh);
+window.addEventListener('resize', scheduleAppVhUpdate);
+window.visualViewport?.addEventListener('resize', scheduleAppVhUpdate);
 
 // Nudge the page into settling its real viewport metrics. Traced this on
 // 2026-08-07: on a fresh standalone-PWA launch, a page that's never
