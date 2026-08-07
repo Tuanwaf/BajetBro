@@ -12,6 +12,24 @@ import { initInstallPrompt, waitForInstallResolution, isStandalone } from './lib
 // installPrompt.js) that decides how long to give it before giving up.
 initInstallPrompt();
 
+// `100dvh` is supposed to track the true visible height on its own, but on
+// a fresh standalone-PWA launch iOS has repeatedly been observed reporting
+// a dvh value taller than what's actually visible before the WebView's
+// layout fully settles -- on a page short enough to not need scrolling
+// (the onboarding form), that gap shows up as a visible strip of the raw
+// body background below the floating nav dock. `visualViewport.height` is
+// the actual current visible height, so mirroring it into a plain px custom
+// property (the well-known "--vh hack") sidesteps whatever dvh is doing
+// wrong, and re-runs on every resize so it also tracks the keyboard
+// opening/closing and orientation changes.
+function updateAppVh() {
+  const h = (window.visualViewport?.height ?? window.innerHeight) * 0.01;
+  document.documentElement.style.setProperty('--app-vh', `${h}px`);
+}
+updateAppVh();
+window.addEventListener('resize', updateAppVh);
+window.visualViewport?.addEventListener('resize', updateAppVh);
+
 // Zoom is only locked down once installed to the home screen -- it should
 // feel like a native app there, not a webpage, but a regular browser tab
 // (Safari, Chrome) is still just a website and should keep normal pinch

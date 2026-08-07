@@ -45,7 +45,17 @@
     // Let scroll settle a frame before measuring.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const r = el.getBoundingClientRect();
-      rect = { top: r.top - PAD, left: r.left - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
+      // getBoundingClientRect() is relative to the VISUAL viewport, but this
+      // overlay is `position: fixed`, which iOS Safari keeps pinned to the
+      // LAYOUT viewport -- while the keyboard is open those two disagree by
+      // exactly `visualViewport.offsetLeft/offsetTop`. Without adding that
+      // back in, the ring renders using visual-viewport coordinates inside a
+      // layout-viewport-anchored box, landing off from the real input by
+      // however much the keyboard has shifted things.
+      const vv = window.visualViewport;
+      const offsetX = vv ? vv.offsetLeft : 0;
+      const offsetY = vv ? vv.offsetTop : 0;
+      rect = { top: r.top + offsetY - PAD, left: r.left + offsetX - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
     }));
   }
 
