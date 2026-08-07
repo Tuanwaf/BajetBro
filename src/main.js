@@ -30,6 +30,29 @@ updateAppVh();
 window.addEventListener('resize', updateAppVh);
 window.visualViewport?.addEventListener('resize', updateAppVh);
 
+// Nudge the page into settling its real viewport metrics. Traced this on
+// 2026-08-07: on a fresh standalone-PWA launch, a page that's never
+// actually long enough to scroll (Home/Goals/History before a month
+// exists) keeps the nav dock's fixed positioning stuck ~140px too high,
+// permanently -- but visiting Settings (which is genuinely tall enough to
+// overflow, even pre-month) fixes it for good, even back on a short page.
+// App.svelte already calls scrollTo(0,0) on every tab switch, but that's a
+// no-op with nothing to prove -- forcing a hair of always-present overflow
+// (see the +2px in app.css) means this scroll is a REAL one, every time,
+// on every page, not just the one that happens to overflow on its own.
+// Runs here, before Svelte even mounts, specifically so it resolves while
+// the splash screen is still covering the page (index.html's minimum
+// 450ms) -- doing this after mount instead visibly showed the correction
+// happening: the page would render wrong for a frame, then visibly settle
+// into place a moment later.
+requestAnimationFrame(() => {
+  window.scrollTo(0, 1);
+  requestAnimationFrame(() => {
+    window.scrollTo(0, 0);
+    updateAppVh();
+  });
+});
+
 // Zoom is only locked down once installed to the home screen -- it should
 // feel like a native app there, not a webpage, but a regular browser tab
 // (Safari, Chrome) is still just a website and should keep normal pinch
@@ -64,25 +87,6 @@ async function init() {
 
   mount(App, {
     target: document.getElementById('app'),
-  });
-
-  // Nudge the page into settling its real viewport metrics. Traced this on
-  // 2026-08-07: on a fresh standalone-PWA launch, a page that's never
-  // actually long enough to scroll (Home/Goals/History before a month
-  // exists) keeps the nav dock's fixed positioning stuck ~140px too high,
-  // permanently -- but visiting Settings (which is genuinely tall enough to
-  // overflow, even pre-month) fixes it for good, even back on a short page.
-  // App.svelte already calls scrollTo(0,0) on every tab switch, but that's
-  // a no-op with nothing to prove -- forcing a hair of always-present
-  // overflow (see the +2px in app.css) means this scroll is a REAL one,
-  // every time, on every page, not just the one that happens to overflow
-  // on its own.
-  requestAnimationFrame(() => {
-    window.scrollTo(0, 1);
-    requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      updateAppVh();
-    });
   });
 
   // A genuinely fresh install (personalization migration found nothing to
