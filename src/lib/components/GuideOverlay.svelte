@@ -55,7 +55,21 @@
       const vv = window.visualViewport;
       const offsetX = vv ? vv.offsetLeft : 0;
       const offsetY = vv ? vv.offsetTop : 0;
-      rect = { top: r.top + offsetY - PAD, left: r.left + offsetX - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
+      const top = r.top + offsetY - PAD;
+      // A target taller than the space left below the guide card (e.g. the
+      // Buffer labels card once several labels exist) would otherwise draw
+      // the ring/hole straight through the floating nav dock, visually
+      // "including" it in the highlight even though it has nothing to do
+      // with the step. Clamp the bottom edge to just above the dock instead
+      // of the target's true full height -- but only when the dock sits
+      // BELOW the target's own top; the 'navigate' steps that highlight a
+      // tab inside the dock itself have a navDockTop at or above `top`,
+      // and clamping there would collapse the hole to zero height, blocking
+      // the very tap the step is asking for.
+      const navDockTop = document.querySelector('.navdock')?.getBoundingClientRect().top;
+      const maxBottom = navDockTop != null && navDockTop > top ? navDockTop - 8 : (vv?.height ?? window.innerHeight);
+      const bottom = Math.min(r.top + offsetY + r.height + PAD, maxBottom);
+      rect = { top, left: r.left + offsetX - PAD, width: r.width + PAD * 2, height: Math.max(0, bottom - top) };
     }));
   }
 
