@@ -252,7 +252,15 @@
     <div class="field-lbl">Your name <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
     <input class="note-input" data-guide="ob-name" placeholder="e.g. Wafiq" bind:value={obName} />
   </div>
-  <p class="hint" style="margin:10px 4px;">Fixed categories (rent, phone bill, etc.) come pre-filled as a template — rename or adjust them anytime in Settings, except Saving, which is tied to the Goals page.</p>
+  <p class="hint" style="margin:14px 4px 8px;">These fixed categories come pre-filled as a template — rename or adjust them (or add your own) anytime in Settings, except Saving, which is tied to the Goals page:</p>
+  <div class="card">
+    {#each tmpl.categories as cat (cat.key)}
+      <div class="set-row">
+        <span class="dot" style="background:{cat.color}"></span>
+        <span class="lbl2">{cat.name}</span>
+      </div>
+    {/each}
+  </div>
   <button class="save-btn" data-guide="ob-start" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
 {:else}
   <p class="sub">Loading...</p>
