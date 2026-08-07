@@ -23,57 +23,12 @@ initInstallPrompt();
 // wrong, and re-runs on every resize so it also tracks the keyboard
 // opening/closing and orientation changes.
 function updateAppVh() {
-  const h = window.visualViewport?.height ?? window.innerHeight;
+  const h = (window.visualViewport?.height ?? window.innerHeight) * 0.01;
   document.documentElement.style.setProperty('--app-vh', `${h}px`);
 }
-// The keyboard's own open/close slide fires MANY visualViewport 'resize'
-// events over its ~250-300ms animation, one per intermediate height as it
-// moves. Calling updateAppVh() live on every one of those (traced via
-// frame-by-frame screen recording on 2026-08-07) made the nav dock/onboard
-// layout visibly "chase" the keyboard in real time instead of just landing
-// on the right spot -- that's the slow scroll that kept showing up right
-// as the keyboard closed. Debouncing means only the FINAL height (after
-// the keyboard's animation has actually finished) ever gets applied, so
-// the layout jumps once, straight to the correct end state.
-let appVhDebounce;
-function scheduleAppVhUpdate() {
-  clearTimeout(appVhDebounce);
-  appVhDebounce = setTimeout(updateAppVh, 120);
-}
 updateAppVh();
-window.addEventListener('resize', scheduleAppVhUpdate);
-window.visualViewport?.addEventListener('resize', scheduleAppVhUpdate);
-
-// Nudge the page into settling its real viewport metrics. Traced this on
-// 2026-08-07: on a fresh standalone-PWA launch, a page that's never
-// actually long enough to scroll (Home/Goals/History before a month
-// exists) keeps the nav dock's fixed positioning stuck ~140px too high,
-// permanently -- but visiting Settings (which is genuinely tall enough to
-// overflow, even pre-month) fixes it for good, even back on a short page.
-// App.svelte already calls scrollTo(0,0) on every tab switch, but that's a
-// no-op with nothing to prove -- forcing a hair of always-present overflow
-// (see the +2px in app.css) means this scroll is a REAL one, every time,
-// on every page, not just the one that happens to overflow on its own.
-// Runs here, before Svelte even mounts, specifically so it resolves while
-// the splash screen is still covering the page (index.html's minimum
-// 450ms) -- doing this after mount instead visibly showed the correction
-// happening: the page would render wrong for a frame, then visibly settle
-// into place a moment later.
-// overscroll-behavior-y defaults to 'auto' (see body's own rule below)
-// before App.svelte's refreshBounce() gets a chance to decide the real
-// value -- with it on, this 1px round trip reads to iOS as a real
-// rubber-band scroll and plays its native elastic snap-back animation,
-// which is the "slow scroll" this whole nudge was supposed to be invisible.
-// Forcing 'none' just for this instant makes it a flat, immediate jump.
-document.documentElement.style.overscrollBehaviorY = 'none';
-document.body.style.overscrollBehaviorY = 'none';
-requestAnimationFrame(() => {
-  window.scrollTo({ top: 1, left: 0, behavior: 'instant' });
-  requestAnimationFrame(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    updateAppVh();
-  });
-});
+window.addEventListener('resize', updateAppVh);
+window.visualViewport?.addEventListener('resize', updateAppVh);
 
 // Zoom is only locked down once installed to the home screen -- it should
 // feel like a native app there, not a webpage, but a regular browser tab

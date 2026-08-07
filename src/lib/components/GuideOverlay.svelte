@@ -18,7 +18,7 @@
 
   const PAD = 6;
 
-  function measure(allowScroll = true) {
+  function measure() {
     if (!step) return;
     const el = document.querySelector(step.target);
     if (!el) {
@@ -31,22 +31,16 @@
     }
     findAttempts = 0;
     interactive = step.kind === 'navigate' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
-    // Only force a scroll when arriving at a NEW step, and only when the
-    // target genuinely isn't visible yet. `allowScroll` is false for
-    // re-measurements triggered by resize/scroll/keyboard events -- without
-    // that guard, opening the keyboard on an onboarding field (which shrinks
-    // the visual viewport and can make the field look "no longer fully
-    // visible") re-triggered scrollIntoView, and closing the keyboard
-    // triggered it AGAIN back the other way -- a visible, unwanted scroll
-    // each time, on top of whatever the OS already does to keep the focused
-    // field clear of the keyboard on its own.
-    if (allowScroll) {
-      const pre = el.getBoundingClientRect();
-      const viewportH = window.visualViewport?.height ?? window.innerHeight;
-      const fullyVisible = pre.top >= 0 && pre.bottom <= viewportH;
-      if (!fullyVisible) {
-        el.scrollIntoView({ block: 'center', behavior: 'instant' });
-      }
+    // Only force a scroll when the target genuinely isn't visible -- on a
+    // short page (e.g. the 3-field onboarding form) the target already sits
+    // fully on-screen, and scrollIntoView({block:'center'}) still nudges the
+    // document by a few px looking for perfect centering. On iOS that tiny
+    // forced scroll on a non-overflowing page can trigger a rubber-band
+    // overscroll that gets stuck, showing blank space below the nav dock.
+    const pre = el.getBoundingClientRect();
+    const fullyVisible = pre.top >= 0 && pre.bottom <= window.innerHeight;
+    if (!fullyVisible) {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
     }
     // Let scroll settle a frame before measuring.
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -92,7 +86,7 @@
 
   $effect(() => {
     if (!$tourActive) return;
-    resizeHandler = () => measure(false);
+    resizeHandler = () => measure();
     window.addEventListener('resize', resizeHandler);
     window.addEventListener('scroll', resizeHandler, true);
     // iOS Safari resizes the visual viewport (not the layout viewport) when
