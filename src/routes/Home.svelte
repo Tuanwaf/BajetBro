@@ -238,22 +238,26 @@
     End {month.label} &amp; start next month
   </button>
 {:else if tmpl}
-  <h2 class="title">Welcome 👋</h2>
-  <p class="sub">Let's set up your first month.</p>
-  <div class="card">
-    <div class="field-lbl" style="margin-top:0;">Income <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input num" data-guide="ob-income" placeholder="0.00" inputmode="decimal" bind:value={obStartMoney} />
-    <p class="hint" style="margin:4px 2px 14px;">How much money you're starting this month with in total — salary included, plus any savings or leftover you already have. Leave blank if it's just your salary.</p>
+  <div class="onboard-wrap">
+    <div>
+      <h2 class="title">Welcome 👋</h2>
+      <p class="sub">Let's set up your first month.</p>
+      <div class="card">
+        <div class="field-lbl" style="margin-top:0;">Income <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
+        <input class="note-input num" data-guide="ob-income" placeholder="0.00" inputmode="decimal" bind:value={obStartMoney} />
+        <p class="hint" style="margin:4px 2px 14px;">How much money you're starting this month with in total — salary included, plus any savings or leftover you already have. Leave blank if it's just your salary.</p>
 
-    <div class="field-lbl">Salary</div>
-    <input class="note-input num" data-guide="ob-salary" placeholder="0.00" inputmode="decimal" bind:value={obSalary} />
-    <p class="hint" style="margin:4px 2px 14px;">Your monthly salary — you can adjust this later in Settings (Income adjusts with it automatically).</p>
+        <div class="field-lbl">Salary</div>
+        <input class="note-input num" data-guide="ob-salary" placeholder="0.00" inputmode="decimal" bind:value={obSalary} />
+        <p class="hint" style="margin:4px 2px 14px;">Your monthly salary — you can adjust this later in Settings (Income adjusts with it automatically).</p>
 
-    <div class="field-lbl">Your name <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input" data-guide="ob-name" placeholder="e.g. Wafiq" bind:value={obName} />
+        <div class="field-lbl">Your name <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
+        <input class="note-input" data-guide="ob-name" placeholder="e.g. Wafiq" bind:value={obName} />
+      </div>
+      <p class="hint" style="margin:10px 4px;">Fixed categories (rent, phone bill, etc.) come pre-filled as a template — rename or adjust them anytime in Settings, except Saving, which is tied to the Goals page.</p>
+    </div>
+    <button class="save-btn" data-guide="ob-start" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
   </div>
-  <p class="hint" style="margin:10px 4px;">Fixed categories (rent, phone bill, etc.) come pre-filled as a template — rename or adjust them anytime in Settings, except Saving, which is tied to the Goals page.</p>
-  <button class="save-btn" data-guide="ob-start" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
 {:else}
   <p class="sub">Loading...</p>
 {/if}
@@ -264,6 +268,23 @@
 <LoanLogSheet open={loanLogOpen} onClose={() => (loanLogOpen = false)} />
 
 <style>
+  /* Fills exactly the space .view leaves between the status bar and the
+     floating nav dock (mirrors .view's own top/bottom padding formula in
+     app.css) and pins the Start button to the very bottom of it via
+     margin-top:auto below. On the short 3-field form this keeps the page
+     genuinely full-height instead of ending early with empty space -- if
+     the visible viewport ever comes out taller than the layout engine
+     expects (a real quirk seen on iOS at first PWA launch), the button
+     still lands flush at the true bottom instead of floating mid-page. */
+  .onboard-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(
+      var(--app-vh, 100dvh) - env(safe-area-inset-top, 0px) - 16px -
+        env(safe-area-inset-bottom, 0px) - 108px
+    );
+  }
+  .onboard-wrap .save-btn { margin-top: auto; }
   .lock-btn {
     background: none;
     border: none;

@@ -23,7 +23,7 @@ initInstallPrompt();
 // wrong, and re-runs on every resize so it also tracks the keyboard
 // opening/closing and orientation changes.
 function updateAppVh() {
-  const h = (window.visualViewport?.height ?? window.innerHeight) * 0.01;
+  const h = window.visualViewport?.height ?? window.innerHeight;
   document.documentElement.style.setProperty('--app-vh', `${h}px`);
 }
 updateAppVh();

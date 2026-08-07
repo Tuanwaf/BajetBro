@@ -31,14 +31,17 @@
     }
     findAttempts = 0;
     interactive = step.kind === 'navigate' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
-    // Only force a scroll when the target genuinely isn't visible -- on a
-    // short page (e.g. the 3-field onboarding form) the target already sits
-    // fully on-screen, and scrollIntoView({block:'center'}) still nudges the
-    // document by a few px looking for perfect centering. On iOS that tiny
-    // forced scroll on a non-overflowing page can trigger a rubber-band
-    // overscroll that gets stuck, showing blank space below the nav dock.
+    // Only force a scroll when the target genuinely isn't visible -- when
+    // it's already on-screen, scrollIntoView({block:'center'}) still nudges
+    // the document by a few px chasing perfect centering, which is a
+    // pointless scroll at best. Must check against visualViewport.height,
+    // not window.innerHeight -- the latter isn't reliably accurate on iOS
+    // (see the --app-vh fix in main.js), and using it here previously
+    // produced a false "already visible" on at least one step (Buffer
+    // labels), skipping the scroll it actually needed.
     const pre = el.getBoundingClientRect();
-    const fullyVisible = pre.top >= 0 && pre.bottom <= window.innerHeight;
+    const viewportH = window.visualViewport?.height ?? window.innerHeight;
+    const fullyVisible = pre.top >= 0 && pre.bottom <= viewportH;
     if (!fullyVisible) {
       el.scrollIntoView({ block: 'center', behavior: 'instant' });
     }
