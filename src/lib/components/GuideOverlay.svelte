@@ -38,9 +38,19 @@
     // forced scroll on a non-overflowing page can trigger a rubber-band
     // overscroll that gets stuck, showing blank space below the nav dock.
     const pre = el.getBoundingClientRect();
-    const fullyVisible = pre.top >= 0 && pre.bottom <= window.innerHeight;
+    const viewportH = window.innerHeight;
+    const fullyVisible = pre.top >= 0 && pre.bottom <= viewportH;
     if (!fullyVisible) {
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      // A target taller than roughly half the viewport (e.g. Buffer labels
+      // once it has several rows) can't be fully shown by 'center' once the
+      // guide dialog also needs its own room -- centering the target just
+      // means its top ends up hidden behind the dialog instead, which is
+      // why step 15 looked "not scrolled" next to a shorter card like step
+      // 16's Backup & transfer. Aligning to the START shows the top of a
+      // long card reliably, and also pushes the dialog itself down into the
+      // space that opens up below (cardPlacement reacts to the new rect).
+      const block = pre.height > viewportH * 0.5 ? 'start' : 'center';
+      el.scrollIntoView({ block, behavior: 'instant' });
     }
     // Let scroll settle a frame before measuring.
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -61,13 +71,16 @@
       // the ring/hole straight through the floating nav dock, visually
       // "including" it in the highlight even though it has nothing to do
       // with the step. Clamp the bottom edge to just above the dock instead
-      // of the target's true full height -- but only when the dock sits
-      // BELOW the target's own top; the 'navigate' steps that highlight a
-      // tab inside the dock itself have a navDockTop at or above `top`,
-      // and clamping there would collapse the hole to zero height, blocking
-      // the very tap the step is asking for.
-      const navDockTop = document.querySelector('.navdock')?.getBoundingClientRect().top;
-      const maxBottom = navDockTop != null && navDockTop > top ? navDockTop - 8 : (vv?.height ?? window.innerHeight);
+      // of the target's true full height -- but never when the target IS
+      // the dock or something inside it (the FAB, or a tab for a 'navigate'
+      // step). A position check (dock top vs target top) isn't reliable for
+      // this: the FAB pokes 15px above the pill without expanding the
+      // dock's own bounding box, so it read as "above the dock" and got
+      // clamped down to almost nothing. Checking ancestry instead is exact.
+      const navDock = document.querySelector('.navdock');
+      const targetIsInDock = navDock?.contains(el);
+      const navDockTop = navDock?.getBoundingClientRect().top;
+      const maxBottom = navDockTop != null && !targetIsInDock ? navDockTop - 8 : (vv?.height ?? window.innerHeight);
       const bottom = Math.min(r.top + offsetY + r.height + PAD, maxBottom);
       rect = { top, left: r.left + offsetX - PAD, width: r.width + PAD * 2, height: Math.max(0, bottom - top) };
     }));
