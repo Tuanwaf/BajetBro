@@ -56,7 +56,11 @@
   // bouncing an unscrollable page feels wrong, so we lock overscroll to
   // 'none' there and switch it back to 'auto' once content overflows.
   function refreshBounce() {
-    const scrollable = document.documentElement.scrollHeight > window.innerHeight + 1;
+    // body has a permanent +2px of forced overflow (see app.css) so the
+    // launch-time scroll-settle nudge in main.js always has real scroll
+    // room to use -- pad the threshold past that so a genuinely short page
+    // doesn't read as "scrollable" just from that forced sliver.
+    const scrollable = document.documentElement.scrollHeight > window.innerHeight + 3;
     const mode = scrollable ? 'auto' : 'none';
     document.documentElement.style.overscrollBehaviorY = mode;
     document.body.style.overscrollBehaviorY = mode;

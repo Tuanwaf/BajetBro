@@ -88,7 +88,12 @@ input { font-family: inherit; }
 
 body {
   margin: 0;
-  min-height: var(--app-vh, 100dvh);
+  /* +2px guarantees the document is always technically scrollable, even on
+     the shortest page (the onboarding form) -- main.js forces a scroll on
+     launch to make the browser settle its real viewport metrics, and that
+     forced scroll needs somewhere, however tiny, to actually go. 2px is
+     imperceptible against the page's own content. */
+  min-height: calc(var(--app-vh, 100dvh) + 2px);
   background: var(--ink-2);
   color: var(--hi);
   font-family: var(--body);
