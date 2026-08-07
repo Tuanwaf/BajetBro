@@ -3,7 +3,7 @@
   import { computeBufferPlanned, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { BUFFER_LABEL_PRESETS } from '../lib/constants.js';
+  import { BUFFER_LABEL_PRESETS, GOAL_COLORS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
   import { startTour } from '../lib/tour.js';
@@ -17,6 +17,7 @@
   let additionalIncomeAmount = $state('');
   let additionalIncomeNote = $state('');
   let newBufferLabel = $state('');
+  let newCategoryName = $state('');
 
   // additionalIncome itself stays the plain summed total everywhere else in
   // the app (calc.js, History, etc. all just read a number) -- this log is
@@ -149,6 +150,26 @@
     }
     confirmDeleteKey = null;
     showToast(`Removed ${cat.name}`);
+  }
+
+  async function addCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    const baseKey = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'category';
+    let key = baseKey;
+    let n = 2;
+    while (tmpl.categories.some((c) => c.key === key)) {
+      key = `${baseKey}-${n++}`;
+    }
+    const usedColors = new Set(tmpl.categories.map((c) => c.color));
+    const color = GOAL_COLORS.find((c) => !usedColors.has(c)) || GOAL_COLORS[tmpl.categories.length % GOAL_COLORS.length];
+    const newCat = { key, name, color, planned: 0 };
+    await db.template.put({ ...tmpl, categories: [...tmpl.categories, newCat] });
+    if (month) {
+      await db.months.update(month.key, { categories: [...month.categories, { ...newCat }] });
+    }
+    newCategoryName = '';
+    showToast(`Added ${name}`);
   }
 
   async function addBufferLabel() {
@@ -298,6 +319,10 @@
         </div>
       {/if}
     {/each}
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <input class="note-input" placeholder="New category, e.g. Insurance" bind:value={newCategoryName} style="flex:1;" onkeydown={(e) => e.key === 'Enter' && addCategory()} />
+      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px; background:var(--good); color:#fff;" onclick={addCategory}>Add</button>
+    </div>
   </div>
   <p class="hint" style="margin-left:4px;">Saving feeds your Goals pool (it's protected from deletion) — change it here and it applies from next month.</p>
 
