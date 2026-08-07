@@ -45,10 +45,18 @@ window.visualViewport?.addEventListener('resize', updateAppVh);
 // 450ms) -- doing this after mount instead visibly showed the correction
 // happening: the page would render wrong for a frame, then visibly settle
 // into place a moment later.
+// overscroll-behavior-y defaults to 'auto' (see body's own rule below)
+// before App.svelte's refreshBounce() gets a chance to decide the real
+// value -- with it on, this 1px round trip reads to iOS as a real
+// rubber-band scroll and plays its native elastic snap-back animation,
+// which is the "slow scroll" this whole nudge was supposed to be invisible.
+// Forcing 'none' just for this instant makes it a flat, immediate jump.
+document.documentElement.style.overscrollBehaviorY = 'none';
+document.body.style.overscrollBehaviorY = 'none';
 requestAnimationFrame(() => {
-  window.scrollTo(0, 1);
+  window.scrollTo({ top: 1, left: 0, behavior: 'instant' });
   requestAnimationFrame(() => {
-    window.scrollTo(0, 0);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     updateAppVh();
   });
 });
