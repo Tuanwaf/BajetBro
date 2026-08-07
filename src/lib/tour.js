@@ -48,23 +48,18 @@ export const TOUR_STEPS = [
     id: 'home-remaining',
     view: 'home',
     target: '[data-guide="balance-remaining"]',
-    title: 'Remaining this month',
-    body: "The big number at the top — everything you have left to spend or save this month, after every commitment and expense logged so far.",
+    title: 'Your banks',
+    body: "Every bank or e-wallet you track shows up here as its own card — swipe to see a different one.",
   },
   {
     id: 'home-stats',
     view: 'home',
     target: '[data-guide="balance-stats"]',
-    title: 'Income, Salary & Spent',
-    body: 'Income is your comprehensive total (Salary plus anything rolled over or added mid-month). Salary is just your monthly pay on its own. Spent is everything logged this month across every category.',
+    title: 'Balance, income & spending',
+    body: "Each card shows that bank's own balance, plus what's moved in and out of it this month. Tap a bank's transaction list to see the detail.",
   },
-  {
-    id: 'home-loan',
-    view: 'home',
-    target: '[data-guide="loan-log-card"]',
-    title: 'Loan log',
-    body: "A manual record of money you've lent to or borrowed from people. It's just for keeping track — it never touches your balance or Spent.",
-  },
+  // 'home-loan' step (Loan log) skipped while that section is disabled on
+  // Home -- see feature/multi-bank, 2026-08-07. Restore alongside the card.
   {
     id: 'home-commitments',
     view: 'home',

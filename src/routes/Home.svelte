@@ -19,11 +19,22 @@
   import BufferDetailSheet from './BufferDetailSheet.svelte';
   import ReimbursementsSheet from './ReimbursementsSheet.svelte';
   import LoanLogSheet from './LoanLogSheet.svelte';
+  import BankCarousel from '../lib/components/BankCarousel.svelte';
+  import BankTransactionsSheet from './BankTransactionsSheet.svelte';
+  import { banks as bankPreviewStore, focusedBankIndex } from '../lib/bankPreviewStore.js';
 
   let { onEndMonth } = $props();
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
+
+  // ---- multi-bank preview (local dev only, mock data -- not wired to the
+  // real schema yet, see feature/multi-bank branch). Shared with Settings'
+  // "Manage banks" sheet via bankPreviewStore.js. ----
+  let bankPreview = $derived($bankPreviewStore);
+  let activeBankIndex = $derived($focusedBankIndex);
+  let activeBank = $derived(bankPreview[activeBankIndex] ?? bankPreview[0]);
+  let bankTxnSheetOpen = $state(false);
 
   let year = $derived(month ? month.key.split('-')[0] : '');
   let bufferPlanned = $derived(month ? computeBufferPlanned(month) : 0);
@@ -118,34 +129,31 @@
   <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
   <p class="sub">{month.label} {year}</p>
 
-  <div class="balance-card" data-guide="balance-remaining" style="border-color: var(--gold); box-shadow: 5px 5px 0 var(--gold);">
-    <div class="balance-top">
-      <div class="lbl">Remaining this month</div>
-      <span class="pill" class:good={totalRemaining >= 0} class:bad={totalRemaining < 0}>
-        {totalRemaining >= 0 ? 'On track' : 'Over budget'}
-      </span>
-    </div>
-    <div class="balance-amt"><span class="cur">RM</span>{fmt(totalRemaining)}</div>
-    <div class="balance-row" data-guide="balance-stats">
-      <div class="stat">
-        <div class="k">Income</div>
-        <div class="v num">
-          {totalBalance != null ? 'RM ' + fmt(totalBalance) : '—'}
-          {#if month.additionalIncome > 0}<span style="color:var(--good); font-size:10.5px;"> +{fmt(month.additionalIncome)}</span>{/if}
+  <div class="section-hd" data-guide="balance-remaining"><h3>Your banks</h3><span>preview — mock data, local only</span></div>
+  <div data-guide="balance-stats">
+    <BankCarousel banks={bankPreview} activeIndex={activeBankIndex} onNavigate={(i) => focusedBankIndex.set(i)} />
+  </div>
+
+  <div class="section-hd">
+    <h3>Recent · {activeBank.bank.name}</h3>
+    <button class="see-all-btn" onclick={() => (bankTxnSheetOpen = true)}>
+      See all
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div class="card">
+    {#each activeBank.transactions.slice(0, 2) as t}
+      <div class="recent-txn-row">
+        <span class="dot" style="background:{t.color}"></span>
+        <div class="recent-txn-body">
+          <span class="recent-txn-note">{t.note}</span>
+          <span class="recent-txn-date">{t.date}</span>
         </div>
+        <span class="recent-txn-amt" style="color:{t.income ? 'var(--good)' : 'var(--hi)'};">{t.income ? '+' : '−'}RM {fmt(t.amount)}</span>
       </div>
-      <div class="stat">
-        <div class="k">Salary</div>
-        <div class="v num">
-          RM {fmt(month.income)}
-          {#if month.bonus > 0}<span style="color:var(--good); font-size:10.5px;"> +{fmt(month.bonus)}</span>{/if}
-        </div>
-      </div>
-      <div class="stat">
-        <div class="k">Spent</div>
-        <div class="v num" style="color:var(--red);">RM {fmt(spentTotal)}</div>
-      </div>
-    </div>
+    {:else}
+      <p class="hint" style="margin:2px 0;">No transactions yet on this bank.</p>
+    {/each}
   </div>
 
   {#if reimbursedTotal > 0}
@@ -155,21 +163,25 @@
     </button>
   {/if}
 
-  <div class="card" data-guide="loan-log-card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
-    <div>
-      <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Loan log</div>
-      {#if loanList.length}
-        <div style="display:flex; gap:14px; margin-top:2px;">
-          <div><span class="num" style="font-size:17px; font-weight:700; color:var(--good);">RM {fmt(loanLent)}</span><div style="font-size:10.5px; color:var(--dim);">you lent</div></div>
-          <div><span class="num" style="font-size:17px; font-weight:700; color:var(--red);">RM {fmt(loanOwed)}</span><div style="font-size:10.5px; color:var(--dim);">you owe</div></div>
-        </div>
-      {:else}
-        <div class="num" style="font-size:19px; font-weight:700; margin-top:2px; color:var(--dim);">No loans logged</div>
-      {/if}
-      <div style="font-size:11px; color:var(--dim); margin-top:6px;">Manual record — doesn't affect your balance</div>
+  {#if false}
+    <!-- Loan log -- disabled while we decide whether it still belongs here
+         once multi-bank lands (2026-08-07, feature/multi-bank). -->
+    <div class="card" data-guide="loan-log-card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
+      <div>
+        <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Loan log</div>
+        {#if loanList.length}
+          <div style="display:flex; gap:14px; margin-top:2px;">
+            <div><span class="num" style="font-size:17px; font-weight:700; color:var(--good);">RM {fmt(loanLent)}</span><div style="font-size:10.5px; color:var(--dim);">you lent</div></div>
+            <div><span class="num" style="font-size:17px; font-weight:700; color:var(--red);">RM {fmt(loanOwed)}</span><div style="font-size:10.5px; color:var(--dim);">you owe</div></div>
+          </div>
+        {:else}
+          <div class="num" style="font-size:19px; font-weight:700; margin-top:2px; color:var(--dim);">No loans logged</div>
+        {/if}
+        <div style="font-size:11px; color:var(--dim); margin-top:6px;">Manual record — doesn't affect your balance</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </div>
+  {/if}
 
   <div class="section-hd" data-guide="commitments-section">
     <h3>Commitments</h3>
@@ -270,8 +282,28 @@
 <BufferDetailSheet open={bufferLabel != null} label={bufferLabel} onClose={() => (bufferLabel = null)} />
 <ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
 <LoanLogSheet open={loanLogOpen} onClose={() => (loanLogOpen = false)} />
+<BankTransactionsSheet open={bankTxnSheetOpen} bank={activeBank.bank} transactions={activeBank.transactions} onClose={() => (bankTxnSheetOpen = false)} />
 
 <style>
+  .see-all-btn {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--dim);
+    padding: 2px;
+  }
+  .recent-txn-row { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--stroke); }
+  .recent-txn-row:last-child { border-bottom: none; }
+  .recent-txn-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .recent-txn-note { font-size: 12.5px; font-weight: 600; color: var(--hi); }
+  .recent-txn-date { font-size: 10.5px; color: var(--dim); }
+  .recent-txn-amt { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
   .lock-btn {
     background: none;
     border: none;

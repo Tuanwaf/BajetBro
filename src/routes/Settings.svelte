@@ -7,6 +7,10 @@
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
   import { startTour } from '../lib/tour.js';
+  import { banks as bankPreviewStore } from '../lib/bankPreviewStore.js';
+  import ManageBanksSheet from './ManageBanksSheet.svelte';
+
+  let manageBanksOpen = $state(false);
 
   let tmpl = $derived($template);
   let month = $derived($currentMonth);
@@ -241,6 +245,12 @@
   <input class="cat-name-input" style="text-align:right; flex:0 1 auto; width:140px;" value={$userName} placeholder="e.g. Wafiq" onchange={updateName} />
 </div>
 
+<div class="section-hd"><h3>Banks</h3><span>preview — local only</span></div>
+<button class="card" style="display:flex; align-items:center; justify-content:space-between; width:100%; cursor:pointer;" onclick={() => (manageBanksOpen = true)}>
+  <span style="font-size:13.5px; color:var(--lo); font-weight:600;">{$bankPreviewStore.length} bank{$bankPreviewStore.length === 1 ? '' : 's'} added</span>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
 {#if month}
   <div class="section-hd"><h3>Salary baseline</h3></div>
   <div class="card" data-guide="settings-salary" style="display:flex; align-items:center; justify-content:space-between;">
@@ -391,6 +401,8 @@
      to expect to confirm the installed app actually picked up the latest
      deploy, not a stale cached build. -->
 <p class="hint" style="text-align:center; margin-top:22px;">BajetBro v{__APP_VERSION__}</p>
+
+<ManageBanksSheet open={manageBanksOpen} onClose={() => (manageBanksOpen = false)} />
 
 <style>
   .cat-name-input {
