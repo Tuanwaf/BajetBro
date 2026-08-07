@@ -99,7 +99,7 @@
 
   async function updateCategoryPlanned(index, e) {
     const value = parseFloat(e.target.value) || tmpl.categories[index].planned;
-    e.target.value = value.toFixed(2);
+    e.target.value = value ? value.toFixed(2) : '';
     const key = tmpl.categories[index].key;
 
     const updatedTemplate = tmpl.categories.map((c, i) => (i === index ? { ...c, planned: value } : c));
@@ -298,7 +298,7 @@
       <div class="set-row">
         <span class="dot" style="background:{cat.color}"></span>
         <input class="cat-name-input" value={cat.name} onchange={(e) => renameCategory(i, e)} />
-        <input class="set-amt" value={cat.planned.toFixed(2)} onchange={(e) => updateCategoryPlanned(i, e)} />
+        <input class="set-amt" value={cat.planned ? cat.planned.toFixed(2) : ''} placeholder="0.00" onchange={(e) => updateCategoryPlanned(i, e)} />
         {#if cat.key === 'saving'}
           <span class="cat-lock" title="Feeds your Goals pool — protected">
             <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
