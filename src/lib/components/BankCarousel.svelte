@@ -11,10 +11,25 @@
 
   let scrollerEl = $state(null);
 
+  // Tracks the index WE last reported via onNavigate, so the effect below
+  // can tell a self-driven change (this swipe already reported it) apart
+  // from an external one (Settings tapped a different card). Without this,
+  // every normal-speed swipe crossed the halfway mark while the browser's
+  // own native momentum/snap was still gliding toward the target -- that
+  // instantly forced a `scrollTo` to the exact final position, aborting the
+  // native deceleration mid-flight and turning what should feel like a
+  // smooth slide into an abrupt snap partway through. A slow drag never hit
+  // this because the finger was already almost at the target the moment the
+  // threshold crossed, so the forced jump was too small to notice.
+  let lastReportedIndex = activeIndex;
+
   function onScroll() {
     if (!scrollerEl) return;
     const idx = Math.round(scrollerEl.scrollLeft / scrollerEl.clientWidth);
-    if (idx !== activeIndex) onNavigate(idx);
+    if (idx !== activeIndex) {
+      lastReportedIndex = idx;
+      onNavigate(idx);
+    }
   }
 
   function syncScroll() {
@@ -26,7 +41,8 @@
   }
 
   $effect(() => {
-    activeIndex;
+    if (activeIndex === lastReportedIndex) return;
+    lastReportedIndex = activeIndex;
     syncScroll();
   });
 
@@ -45,9 +61,9 @@
 </script>
 
 <div class="carousel" bind:this={scrollerEl} onscroll={onScroll}>
-  {#each banks as b, i (b.bank.id)}
+  {#each banks as b (b.bank.id)}
     <div class="slide">
-      <BankCard bank={b.bank} balance={b.balance} income={b.income} spending={b.spending} isMain={i === 0} />
+      <BankCard bank={b.bank} balance={b.balance} income={b.income} spending={b.spending} isMain={b.bank.isMain} />
     </div>
   {/each}
 </div>

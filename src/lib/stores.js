@@ -37,6 +37,11 @@ export const dividends = fromLiveQuery(
 
 export const goals = fromLiveQuery(() => db.goals.orderBy('order').toArray(), []);
 
+// The bank list -- see feature/multi-bank. Real persistence (db.banks), not
+// mock data; bankPreviewStore.js re-exports this alongside the mutating
+// functions (addBank/updateBank/deleteBank) that write through to it.
+export const banks = fromLiveQuery(() => db.banks.orderBy('order').toArray(), []);
+
 export const savingsSpends = fromLiveQuery(
   () => db.savingsSpends.orderBy('date').reverse().toArray(),
   []

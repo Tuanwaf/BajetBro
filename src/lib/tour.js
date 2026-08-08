@@ -1,6 +1,5 @@
 import { writable, get } from 'svelte/store';
 import { currentView } from './viewStore.js';
-import { currentMonth } from './stores.js';
 import db from './db.js';
 
 export const tourActive = writable(false);
@@ -11,38 +10,6 @@ export const tourStepIndex = writable(0);
 // the Start button); advances itself once `waitFor()` becomes true, so it's
 // learned by doing rather than narrated. Next still works as a fallback.
 export const TOUR_STEPS = [
-  // ---------------- first-run setup ----------------
-  {
-    id: 'ob-income',
-    view: 'home',
-    target: '[data-guide="ob-income"]',
-    title: 'Income',
-    body: "The total you're starting this month with — salary plus any savings or leftover you already have. Not sure? Leave it blank and it'll match your salary.",
-  },
-  {
-    id: 'ob-salary',
-    view: 'home',
-    target: '[data-guide="ob-salary"]',
-    title: 'Salary',
-    body: 'Your regular monthly pay. You can change this later in Settings whenever it changes — Income adjusts to match automatically.',
-  },
-  {
-    id: 'ob-name',
-    view: 'home',
-    target: '[data-guide="ob-name"]',
-    title: 'Your name',
-    body: "Just for the greeting on this page. Totally optional, and you can set or change it in Settings anytime.",
-  },
-  {
-    id: 'ob-start',
-    view: 'home',
-    target: '[data-guide="ob-start"]',
-    kind: 'navigate',
-    waitFor: () => !!get(currentMonth),
-    title: 'Start your month',
-    body: 'Tap this when the numbers look right — it creates your first month so you can start tracking.',
-  },
-
   // ---------------- home dashboard ----------------
   {
     id: 'home-remaining',
@@ -187,11 +154,7 @@ export const TOUR_STEPS = [
 
 export async function startTour() {
   currentView.set('home');
-  // The first 4 steps walk through the onboarding fields, which only exist
-  // before a month has been created. Replaying the tour later (a month
-  // already exists) skips straight to the dashboard steps instead.
-  const startIndex = get(currentMonth) ? TOUR_STEPS.findIndex((s) => s.id === 'home-remaining') : 0;
-  tourStepIndex.set(Math.max(0, startIndex));
+  tourStepIndex.set(0);
   tourActive.set(true);
 }
 

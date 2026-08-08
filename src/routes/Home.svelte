@@ -1,5 +1,5 @@
 <script>
-  import { currentMonth, template, loans, userName } from '../lib/stores.js';
+  import { currentMonth, loans, userName } from '../lib/stores.js';
   import {
     computeBufferPlanned,
     computeBufferActual,
@@ -11,9 +11,8 @@
     round2,
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
-  import { BUFFER_COLOR, MONTH_NAMES } from '../lib/constants.js';
+  import { BUFFER_COLOR } from '../lib/constants.js';
   import { currentView } from '../lib/viewStore.js';
-  import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
   import BufferDetailSheet from './BufferDetailSheet.svelte';
@@ -26,11 +25,13 @@
   let { onEndMonth } = $props();
 
   let month = $derived($currentMonth);
-  let tmpl = $derived($template);
 
-  // ---- multi-bank preview (local dev only, mock data -- not wired to the
-  // real schema yet, see feature/multi-bank branch). Shared with Settings'
-  // "Manage banks" sheet via bankPreviewStore.js. ----
+  // ---- multi-bank (see feature/multi-bank) -- the bank list itself is
+  // real (db.banks), shared with Settings' "Manage banks" sheet and
+  // OnboardingFlow via bankPreviewStore.js. Transaction-level bank tagging
+  // isn't wired up yet -- each bank's own `transactions` here is still
+  // just whatever was seeded/entered directly, not derived from real
+  // expense entries. ----
   let bankPreview = $derived($bankPreviewStore);
   let activeBankIndex = $derived($focusedBankIndex);
   let activeBank = $derived(bankPreview[activeBankIndex] ?? bankPreview[0]);
@@ -67,45 +68,6 @@
   let loanOwed = $derived(round2(loanList.filter((l) => l.direction === 'borrowed').reduce((s, l) => s + l.amount, 0)));
   let loanLogOpen = $state(false);
 
-  // First-run setup: a fresh install has a template but no month yet, and
-  // nothing else in the app can create the first one (End Month only rolls
-  // an EXISTING month forward), so Home has to offer it directly.
-  // "Income" here means the comprehensive starting figure shown on Home
-  // (Salary + whatever else you're starting with) -- NOT just salary. It
-  // maps to month.startingBalance, which every later month already folds
-  // its own Salary into (see calc.js), so asking for the all-in figure up
-  // front keeps month 1 consistent with every month after it.
-  let obStartMoney = $state('');
-  let obSalary = $state('');
-  let obName = $state('');
-
-  async function startFirstMonth() {
-    const salary = parseFloat(obSalary);
-    if (!salary) return showToast('Enter your salary first');
-    // Left blank = no extra on top of salary, i.e. starting money == salary.
-    const startingBalance = obStartMoney.trim() ? parseFloat(obStartMoney) || 0 : salary;
-    const name = obName.trim();
-    const now = new Date();
-    const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const label = MONTH_NAMES[now.getMonth()];
-    await db.months.put({
-      key,
-      order: now.getMonth() + 1,
-      label,
-      closed: 0,
-      income: salary,
-      bonus: 0,
-      additionalIncome: 0,
-      startingBalance,
-      categories: tmpl.categories.map((c) => ({ ...c, actual: 0 })),
-      extras: [],
-      recordedTotal: 0,
-      startedAt: now.toISOString(),
-    });
-    if (name) await db.meta.put({ key: 'userName', value: name });
-    showToast(`${label} started`);
-  }
-
   function rowInfo(cat) {
     const pct = cat.planned > 0 ? Math.min(100, Math.round((cat.actual / cat.planned) * 100)) : cat.actual > 0 ? 100 : 0;
     const over = cat.actual > cat.planned;
@@ -125,36 +87,37 @@
   }
 </script>
 
-{#if month && tmpl}
-  <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
+<h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
   <p class="sub">{month.label} {year}</p>
 
-  <div class="section-hd" data-guide="balance-remaining"><h3>Your banks</h3><span>preview — mock data, local only</span></div>
-  <div data-guide="balance-stats">
-    <BankCarousel banks={bankPreview} activeIndex={activeBankIndex} onNavigate={(i) => focusedBankIndex.set(i)} />
-  </div>
+  {#if activeBank}
+    <div class="section-hd" data-guide="balance-remaining"><h3>Your banks</h3></div>
+    <div data-guide="balance-stats">
+      <BankCarousel banks={bankPreview} activeIndex={activeBankIndex} onNavigate={(i) => focusedBankIndex.set(i)} />
+    </div>
 
-  <div class="section-hd">
-    <h3>Recent · {activeBank.bank.name}</h3>
-    <button class="see-all-btn" onclick={() => (bankTxnSheetOpen = true)}>
-      See all
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-  </div>
-  <div class="card">
-    {#each activeBank.transactions.slice(0, 2) as t}
-      <div class="recent-txn-row">
-        <span class="dot" style="background:{t.color}"></span>
-        <div class="recent-txn-body">
-          <span class="recent-txn-note">{t.note}</span>
-          <span class="recent-txn-date">{t.date}</span>
+    <div class="section-hd">
+      <h3>Recent · {activeBank.bank.name}</h3>
+      <button class="see-all-btn" onclick={() => (bankTxnSheetOpen = true)}>
+        See all
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="card">
+      {#each activeBank.transactions.slice(0, 2) as t}
+        <div class="recent-txn-row">
+          <span class="dot" style="background:{t.color}"></span>
+          <div class="recent-txn-body">
+            <span class="recent-txn-note">{t.note}</span>
+            <span class="recent-txn-date">{t.date}</span>
+          </div>
+          <span class="recent-txn-amt" style="color:{t.income ? 'var(--good)' : 'var(--hi)'};">{t.income ? '+' : '−'}RM {fmt(t.amount)}</span>
         </div>
-        <span class="recent-txn-amt" style="color:{t.income ? 'var(--good)' : 'var(--hi)'};">{t.income ? '+' : '−'}RM {fmt(t.amount)}</span>
-      </div>
-    {:else}
-      <p class="hint" style="margin:2px 0;">No transactions yet on this bank.</p>
-    {/each}
-  </div>
+      {:else}
+        <p class="hint" style="margin:2px 0;">No transactions yet on this bank.</p>
+      {/each}
+    </div>
+  {/if}
 
   {#if reimbursedTotal > 0}
     <button class="paidback-row" onclick={() => (reimburseOpen = true)}>
@@ -249,40 +212,12 @@
     <svg viewBox="0 0 24 24" fill="none"><path d="M5 21V4M5 4h11l-2 4 2 4H5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
     End {month.label} &amp; start next month
   </button>
-{:else if tmpl}
-  <h2 class="title">Welcome 👋</h2>
-  <p class="sub">Let's set up your first month.</p>
-  <div class="card">
-    <div class="field-lbl" style="margin-top:0;">Income <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input num" data-guide="ob-income" placeholder="0.00" inputmode="decimal" bind:value={obStartMoney} />
-    <p class="hint" style="margin:4px 2px 14px;">How much money you're starting this month with in total — salary included, plus any savings or leftover you already have. Leave blank if it's just your salary.</p>
-
-    <div class="field-lbl">Salary</div>
-    <input class="note-input num" data-guide="ob-salary" placeholder="0.00" inputmode="decimal" bind:value={obSalary} />
-    <p class="hint" style="margin:4px 2px 14px;">Your monthly salary — you can adjust this later in Settings (Income adjusts with it automatically).</p>
-
-    <div class="field-lbl">Your name <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
-    <input class="note-input" data-guide="ob-name" placeholder="e.g. Wafiq" bind:value={obName} />
-  </div>
-  <p class="hint" style="margin:14px 4px 8px;">These fixed categories come pre-filled as a template — rename or adjust them (or add your own) anytime in Settings, except Saving, which is tied to the Goals page:</p>
-  <div class="card">
-    {#each tmpl.categories as cat (cat.key)}
-      <div class="set-row">
-        <span class="dot" style="background:{cat.color}"></span>
-        <span class="lbl2">{cat.name}</span>
-      </div>
-    {/each}
-  </div>
-  <button class="save-btn" data-guide="ob-start" onclick={startFirstMonth}>Start {MONTH_NAMES[new Date().getMonth()]}</button>
-{:else}
-  <p class="sub">Loading...</p>
-{/if}
 
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
 <BufferDetailSheet open={bufferLabel != null} label={bufferLabel} onClose={() => (bufferLabel = null)} />
 <ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
 <LoanLogSheet open={loanLogOpen} onClose={() => (loanLogOpen = false)} />
-<BankTransactionsSheet open={bankTxnSheetOpen} bank={activeBank.bank} transactions={activeBank.transactions} onClose={() => (bankTxnSheetOpen = false)} />
+<BankTransactionsSheet open={bankTxnSheetOpen} bank={activeBank?.bank} transactions={activeBank?.transactions ?? []} onClose={() => (bankTxnSheetOpen = false)} />
 
 <style>
   .see-all-btn {

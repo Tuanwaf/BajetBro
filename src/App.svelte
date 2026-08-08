@@ -1,10 +1,11 @@
 <script>
   import { currentView, addOpen, addIntent, addOriginRect } from './lib/viewStore.js';
-  import { currentMonth } from './lib/stores.js';
+  import { currentMonth, template } from './lib/stores.js';
   import { showToast } from './lib/toast.js';
   import TabBar from './lib/components/TabBar.svelte';
   import Toast from './lib/components/Toast.svelte';
-  import GuideOverlay from './lib/components/GuideOverlay.svelte';
+  // Guided tour disabled for now -- revisit later if still wanted.
+  // import GuideOverlay from './lib/components/GuideOverlay.svelte';
   import InstallBanner from './lib/components/InstallBanner.svelte';
   import Home from './routes/Home.svelte';
   import Goals from './routes/Goals.svelte';
@@ -12,6 +13,7 @@
   import Settings from './routes/Settings.svelte';
   import AddExpenseSheet from './routes/AddExpenseSheet.svelte';
   import EndMonthSheet from './routes/EndMonthSheet.svelte';
+  import OnboardingFlow from './routes/OnboardingFlow.svelte';
 
   let endMonthSheetOpen = $state(false);
   let viewEl = $state(null);
@@ -41,8 +43,10 @@
   }
 
   function handleAddClick(rect) {
-    // Nothing to log against yet -- a fresh install has no month until the
-    // Home onboarding form creates one.
+    // Nothing to log against yet -- a fresh install has no month until
+    // OnboardingFlow creates one, and the tab bar (this button's only
+    // caller) never renders during onboarding anyway. Kept as a guard in
+    // case that assumption ever changes.
     if (!$currentMonth) return showToast('Set up your first month on Home first');
     // Plain object, not the live DOMRect -- getBoundingClientRect() is
     // already a snapshot, but copying defensively costs nothing and avoids
@@ -96,29 +100,37 @@
 </script>
 
 <div class="app-shell">
-  <div class="view" bind:this={viewEl}>
-    <section class="page" class:active={$currentView === 'home'}>
-      <Home onEndMonth={() => (endMonthSheetOpen = true)} />
-    </section>
-    <section class="page" class:active={$currentView === 'goals'}>
-      <Goals />
-    </section>
-    <section class="page" class:active={$currentView === 'history'}>
-      <History />
-    </section>
-    <section class="page" class:active={$currentView === 'settings'}>
-      <Settings />
-    </section>
-  </div>
+  {#if !$currentMonth}
+    {#if $template}
+      <OnboardingFlow />
+    {:else}
+      <p class="sub" style="padding:40px 20px;">Loading...</p>
+    {/if}
+  {:else}
+    <div class="view" bind:this={viewEl}>
+      <section class="page" class:active={$currentView === 'home'}>
+        <Home onEndMonth={() => (endMonthSheetOpen = true)} />
+      </section>
+      <section class="page" class:active={$currentView === 'goals'}>
+        <Goals />
+      </section>
+      <section class="page" class:active={$currentView === 'history'}>
+        <History />
+      </section>
+      <section class="page" class:active={$currentView === 'settings'}>
+        <Settings />
+      </section>
+    </div>
+
+    <TabBar onAddClick={handleAddClick} hidden={keyboardOpen} />
+
+    <AddExpenseSheet open={$addOpen} intent={$addIntent} originRect={$addOriginRect} onClose={closeAdd} />
+    <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
+
+    <!-- <GuideOverlay /> -->
+    <InstallBanner hidden={$addOpen || endMonthSheetOpen} />
+  {/if}
 
   <div class="status-bar-blur"></div>
-
-  <TabBar onAddClick={handleAddClick} hidden={keyboardOpen} />
-
-  <AddExpenseSheet open={$addOpen} intent={$addIntent} originRect={$addOriginRect} onClose={closeAdd} />
-  <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
-
   <Toast />
-  <GuideOverlay />
-  <InstallBanner hidden={$addOpen || endMonthSheetOpen} />
 </div>

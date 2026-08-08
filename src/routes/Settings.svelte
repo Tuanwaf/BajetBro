@@ -3,11 +3,19 @@
   import { computeBufferPlanned, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { BUFFER_LABEL_PRESETS, GOAL_COLORS } from '../lib/constants.js';
+  import { BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
-  import { startTour } from '../lib/tour.js';
+  // Guided tour is disabled for now -- see the commented-out "Help" section
+  // below. Uncomment this import alongside it to bring the button back.
+  // import { startTour } from '../lib/tour.js';
   import { banks as bankPreviewStore } from '../lib/bankPreviewStore.js';
+  import {
+    addCategory as addCategoryHelper,
+    renameCategory as renameCategoryHelper,
+    updateCategoryPlanned as updateCategoryPlannedHelper,
+    deleteCategory as deleteCategoryHelper,
+  } from '../lib/categories.js';
   import ManageBanksSheet from './ManageBanksSheet.svelte';
 
   let manageBanksOpen = $state(false);
@@ -104,35 +112,14 @@
   async function updateCategoryPlanned(index, e) {
     const value = parseFloat(e.target.value) || tmpl.categories[index].planned;
     e.target.value = value ? value.toFixed(2) : '';
-    const key = tmpl.categories[index].key;
-
-    const updatedTemplate = tmpl.categories.map((c, i) => (i === index ? { ...c, planned: value } : c));
-    await db.template.put({ ...tmpl, categories: updatedTemplate });
-
-    // The current (open) month is still "in progress" -- its categories
-    // should track live template edits too. Only closed/historical months
-    // stay frozen.
-    if (month) {
-      const updatedMonth = month.categories.map((c) => (c.key === key ? { ...c, planned: value } : c));
-      await db.months.update(month.key, { categories: updatedMonth });
-    }
+    await updateCategoryPlannedHelper(tmpl, month, index, value);
   }
 
   // Renaming is safe even for Saving: the pool/Goals link is keyed on `key`
   // ('saving'), never the display name, so the label can be anything.
   async function renameCategory(index, e) {
-    const value = e.target.value.trim();
-    if (!value) {
-      e.target.value = tmpl.categories[index].name;
-      return;
-    }
-    const key = tmpl.categories[index].key;
-    const updatedTemplate = tmpl.categories.map((c, i) => (i === index ? { ...c, name: value } : c));
-    await db.template.put({ ...tmpl, categories: updatedTemplate });
-    if (month) {
-      const updatedMonth = month.categories.map((c) => (c.key === key ? { ...c, name: value } : c));
-      await db.months.update(month.key, { categories: updatedMonth });
-    }
+    const ok = await renameCategoryHelper(tmpl, month, index, e.target.value);
+    if (!ok) e.target.value = tmpl.categories[index].name;
   }
 
   // Deleting removes the category from the template and the current open month
@@ -140,40 +127,17 @@
   // Goals pool and the savings flow, so it can never be deleted.
   let confirmDeleteKey = $state(null);
   async function deleteCategory(index) {
-    const cat = tmpl.categories[index];
-    if (cat.key === 'saving') {
-      showToast("Saving feeds your Goals — it can't be deleted");
-      confirmDeleteKey = null;
-      return;
-    }
-    const updatedTemplate = tmpl.categories.filter((_, i) => i !== index);
-    await db.template.put({ ...tmpl, categories: updatedTemplate });
-    if (month) {
-      const updatedMonth = month.categories.filter((c) => c.key !== cat.key);
-      await db.months.update(month.key, { categories: updatedMonth });
-    }
+    const result = await deleteCategoryHelper(tmpl, month, index);
     confirmDeleteKey = null;
-    showToast(`Removed ${cat.name}`);
+    if (result.blocked) return showToast("Saving feeds your Goals — it can't be deleted");
+    showToast(`Removed ${result.name}`);
   }
 
   async function addCategory() {
-    const name = newCategoryName.trim();
-    if (!name) return;
-    const baseKey = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'category';
-    let key = baseKey;
-    let n = 2;
-    while (tmpl.categories.some((c) => c.key === key)) {
-      key = `${baseKey}-${n++}`;
-    }
-    const usedColors = new Set(tmpl.categories.map((c) => c.color));
-    const color = GOAL_COLORS.find((c) => !usedColors.has(c)) || GOAL_COLORS[tmpl.categories.length % GOAL_COLORS.length];
-    const newCat = { key, name, color, planned: 0 };
-    await db.template.put({ ...tmpl, categories: [...tmpl.categories, newCat] });
-    if (month) {
-      await db.months.update(month.key, { categories: [...month.categories, { ...newCat }] });
-    }
+    const cat = await addCategoryHelper(tmpl, month, newCategoryName);
+    if (!cat) return;
     newCategoryName = '';
-    showToast(`Added ${name}`);
+    showToast(`Added ${cat.name}`);
   }
 
   async function addBufferLabel() {
@@ -245,7 +209,7 @@
   <input class="cat-name-input" style="text-align:right; flex:0 1 auto; width:140px;" value={$userName} placeholder="e.g. Wafiq" onchange={updateName} />
 </div>
 
-<div class="section-hd"><h3>Banks</h3><span>preview — local only</span></div>
+<div class="section-hd"><h3>Banks</h3></div>
 <button class="card" style="display:flex; align-items:center; justify-content:space-between; width:100%; cursor:pointer;" onclick={() => (manageBanksOpen = true)}>
   <span style="font-size:13.5px; color:var(--lo); font-weight:600;">{$bankPreviewStore.length} bank{$bankPreviewStore.length === 1 ? '' : 's'} added</span>
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -380,11 +344,14 @@
   <p class="hint">Everything — commitments, this cycle, goals, dividends — bundles into one file. Import it on your next device to pick up exactly where you left off.</p>
 </div>
 
+<!--
+Guided tour disabled for now -- revisit later if still wanted.
 <div class="section-hd"><h3>Help</h3></div>
 <button class="io-btn" style="background:var(--good); color:#fff;" onclick={startTour}>
   <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 9a2.5 2.5 0 0 1 4.8 1c0 1.5-2.3 1.8-2.3 3.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="16.6" r="0.9" fill="currentColor"/></svg>
   Replay the guided tour
 </button>
+-->
 
 {#if pendingImportFile}
   <div class="card" style="margin-top:12px; border-color:var(--red); box-shadow: 4px 4px 0 var(--red);">

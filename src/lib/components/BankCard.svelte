@@ -1,18 +1,27 @@
 <script>
   import { fmt } from '../format.js';
+  import BankIcon from './BankIcon.svelte';
+  import CardPattern from './CardPattern.svelte';
+  import { getCardDesign, cardBorderColor } from '../constants.js';
 
   let { bank, balance, income, spending, isMain = false } = $props();
 
   let hidden = $state(false);
+  let design = $derived(getCardDesign(bank.design));
+  let borderColor = $derived(cardBorderColor(bank));
 </script>
 
-<div class="bank-card" style="border-color:{bank.color}; box-shadow:5px 5px 0 {bank.color};">
+<div
+  class="bank-card"
+  style="border-color:{borderColor}; box-shadow:5px 5px 0 {borderColor}; background:{design.bg}; --card-fg:{design.fg}; --card-dim:{design.dim};"
+>
+  <CardPattern kind={design.pattern} color={design.patternColor} opacity={design.patternOpacity} />
   <div class="bank-card-top">
     <div class="bank-id">
-      <span class="bank-logo" style="background:{bank.color}">{bank.name[0]}</span>
+      <BankIcon logo={bank.logo} icon={bank.icon} name={bank.name} color={bank.color} />
       <div>
         <div class="bank-name">{bank.name}</div>
-        <div class="bank-tag">{isMain ? 'Main bank' : 'Added'}</div>
+        <div class="bank-tag">{isMain ? 'Main bank' : bank.type === 'ewallet' ? 'E-wallet' : 'Bank'}</div>
       </div>
     </div>
     <div class="bank-brand">BAJETBRO</div>
@@ -49,6 +58,15 @@
     border-radius: 22px;
     padding: 32px 18px 16px;
     position: relative;
+    /* z-index:auto (the default) doesn't create a local stacking context
+       even with position:relative set, so CardPattern's negative z-index
+       escaped this box instead of staying scoped to it -- see .stack-card
+       in ManageBanksSheet.svelte for the fuller explanation. */
+    z-index: 0;
+    /* Clips CardPattern to the card's own rounded corners -- doesn't affect
+       the card's own box-shadow, which paints outside the border box
+       regardless of its overflow. */
+    overflow: hidden;
   }
   /* Traffic-light window dots, same treatment as the hero balance-card
      elsewhere in the app -- reuses the app's own semantic colors rather than
@@ -64,31 +82,26 @@
   }
   .bank-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .bank-id { display: flex; align-items: center; gap: 10px; }
-  .bank-logo {
-    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--accent-ink); font-family: var(--display); font-weight: 800; font-size: 15px;
-    border: 1.5px solid var(--stroke-2);
-  }
-  .bank-name { font-weight: 700; font-size: 14.5px; }
-  .bank-tag { font-size: 10.5px; color: var(--dim); font-weight: 600; margin-top: 1px; }
+  .bank-name { font-weight: 700; font-size: 14.5px; color: var(--card-fg, var(--hi)); }
+  .bank-tag { font-size: 10.5px; color: var(--card-dim, var(--dim)); font-weight: 600; margin-top: 1px; }
   .bank-brand {
     font-family: var(--display); font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
-    color: var(--dim); text-transform: uppercase;
+    color: var(--card-dim, var(--dim)); text-transform: uppercase;
   }
 
   .bank-balance-row { display: flex; align-items: center; gap: 6px; }
-  .bank-balance-lbl { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
-  .eye-btn { background: none; border: none; padding: 2px; color: var(--dim); display: flex; }
+  .bank-balance-lbl { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--card-dim, var(--dim)); }
+  .eye-btn { background: none; border: none; padding: 2px; color: var(--card-dim, var(--dim)); display: flex; }
   .bank-balance-amt {
     font-family: var(--mono); font-variant-numeric: tabular-nums;
     font-size: 32px; font-weight: 700; letter-spacing: -0.01em;
     margin: 3px 0 14px;
+    color: var(--card-fg, var(--hi));
   }
-  .bank-balance-amt .cur { font-size: 15px; color: var(--dim); font-weight: 600; margin-right: 3px; }
+  .bank-balance-amt .cur { font-size: 15px; color: var(--card-dim, var(--dim)); font-weight: 600; margin-right: 3px; }
 
   .bank-stats-row { display: flex; justify-content: space-between; align-items: flex-start; }
   .bank-stat.right { text-align: right; }
-  .bank-stat .k { font-size: 10.5px; color: var(--dim); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .bank-stat .k { font-size: 10.5px; color: var(--card-dim, var(--dim)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
   .bank-stat .v { font-size: 14px; font-weight: 700; margin-top: 3px; }
 </style>

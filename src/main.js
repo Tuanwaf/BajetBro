@@ -4,8 +4,12 @@ import App from './App.svelte';
 import db from './lib/db.js';
 import { seedIfNeeded } from './lib/seed.js';
 import { initPersonalizationFlags } from './lib/personalization.js';
-import { startTour } from './lib/tour.js';
-import { initInstallPrompt, waitForInstallResolution, isStandalone } from './lib/installPrompt.js';
+import { seedBanksIfNeeded } from './lib/bankPreviewStore.js';
+// Guided tour is disabled for now -- see the commented-out block below.
+// import { startTour } from './lib/tour.js';
+import { initInstallPrompt, isStandalone } from './lib/installPrompt.js';
+// `waitForInstallResolution` is only needed by the disabled tour auto-start
+// block below -- re-add it to the import above if that comes back.
 
 // Attached as early as possible -- beforeinstallprompt can fire before the
 // Svelte app even mounts, and this also starts the grace-period timer (see
@@ -61,14 +65,25 @@ async function init() {
 
   await seedIfNeeded(db);
   await initPersonalizationFlags(db);
+  await seedBanksIfNeeded();
 
   mount(App, {
     target: document.getElementById('app'),
   });
 
-  // A genuinely fresh install (personalization migration found nothing to
-  // grandfather it against) starts the guided tour automatically -- but
-  // only after the install-to-home-screen prompt has had its turn. Several
+  // Guided tour is disabled for now -- revisit later if still wanted.
+  // The tour now only covers the dashboard/settings/goals/history -- the
+  // old first 4 steps that walked through Home's onboarding fields are
+  // gone now that OnboardingFlow.svelte handles first-run setup as its own
+  // dedicated flow (see tour.js). Starting the tour before that flow has
+  // even created a month would try to highlight elements that don't exist
+  // yet (OnboardingFlow replaces the tabs entirely until then), so this
+  // only fires once a month already exists -- either because onboarding
+  // just finished this session (it calls startTour() itself right after),
+  // or because a returning user dismissed the tour mid-way on a previous
+  // session and it's resuming now.
+  //
+  // Only after the install-to-home-screen prompt has had its turn: several
   // of this app's visual details (the notch-blur status bar, the floating
   // nav dock sitting flush with the safe area) only render correctly in
   // standalone mode, so touring a browser tab first would walk a first-time
@@ -77,9 +92,10 @@ async function init() {
   // dismissed before, or no install prompt shows up within the grace period
   // (see installPrompt.js) -- onboarding never waits on a prompt that isn't
   // coming.
-  if (!(await db.meta.get('tourCompleted'))) {
-    waitForInstallResolution().then(startTour);
-  }
+  // const [tourFlag, monthCount] = await Promise.all([db.meta.get('tourCompleted'), db.months.count()]);
+  // if (!tourFlag && monthCount > 0) {
+  //   waitForInstallResolution().then(startTour);
+  // }
 
   // Keep the splash up briefly even on a fast/warm load, so its pulse is
   // actually visible rather than flashing past in a frame or two.

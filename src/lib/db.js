@@ -56,4 +56,27 @@ db.version(3).stores({
   meta: 'key',
 });
 
+// v4 -- the bank list itself (see feature/multi-bank), so onboarding's
+// "add your main bank" step actually persists instead of living only in
+// bankPreviewStore.js's in-memory writable. Each record keeps the same
+// nested shape that store already used ({bank:{id,name,color,...},
+// balance, income, spending, transactions}) -- IndexedDB keyPaths support
+// dotted paths, so 'bank.id' works fine as the primary key without
+// flattening every consumer's `entry.bank.*` reads. Transaction-level bank
+// tagging and the full ledger migration are still not part of this --
+// just the list, which is the minimum onboarding needs.
+db.version(4).stores({
+  template: 'id',
+  months: '&key, order, closed',
+  hutangPots: '&month',
+  hutangLedger: 'id',
+  tabungHaji: 'id',
+  dividends: '++id, date',
+  goals: '&id, order',
+  savingsSpends: '++id, date',
+  loans: '++id, date',
+  banks: '&bank.id, order',
+  meta: 'key',
+});
+
 export default db;
