@@ -584,6 +584,17 @@ h2.title {
   padding: 15px 0; border-radius: 16px;
 }
 .save-btn:active { opacity: 0.85; }
+.save-btn.danger { background: var(--red); color: #2a0709; }
+
+/* Shared "are you sure?" inline card, used everywhere a delete needs a
+   second confirming tap before it commits -- no window.confirm() anywhere
+   in this app, since it isn't reliably supported on iOS home-screen PWAs. */
+.del-confirm {
+  padding: 12px 6px 6px;
+  font-size: 12.5px;
+  color: var(--lo);
+  border-bottom: 1px solid var(--stroke);
+}
 
 .bonus-toggle { display: flex; align-items: center; gap: 10px; padding: 14px 2px; font-size: 13.5px; font-weight: 600; color: var(--hi); }
 .bonus-toggle input { width: 18px; height: 18px; accent-color: var(--gold); }

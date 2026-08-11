@@ -36,6 +36,7 @@
   // tx object itself fails: Svelte 5 wraps a $state object in a reactive proxy,
   // so `editingTx === tx` is never true against the raw array element.)
   let editingIdx = $state(null);
+  let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
   let editDest = $state(null); // destination category key
@@ -97,6 +98,7 @@
     // AddExpenseSheet's overspend warning) -- it's not spending anymore
     // once the entry itself is gone.
     if (tx.bankId) await reconcileGoalReserve(tx.bankId, tx.reserveConsumption);
+    confirmDeleteIdx = null;
     showToast('Entry deleted');
   }
 
@@ -242,10 +244,19 @@
                 <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(i, tx)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
                 </button>
-                <button class="icon-btn small" aria-label="Delete entry" onclick={() => deleteTx(tx)}>
+                <button class="icon-btn small" aria-label="Delete entry" onclick={() => (confirmDeleteIdx = i)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               </div>
+              {#if confirmDeleteIdx === i}
+                <div class="del-confirm">
+                  <span>Delete this RM {fmt(tx.amount)} entry?</span>
+                  <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteIdx = null)}>Cancel</button>
+                    <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteTx(tx)}>Delete</button>
+                  </div>
+                </div>
+              {/if}
             {/if}
           {/each}
         </div>

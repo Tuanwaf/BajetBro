@@ -29,6 +29,7 @@
   let newNote = $state('');
 
   let editingId = $state(null);
+  let confirmDeleteId = $state(null);
   let editPerson = $state('');
   let editAmount = $state('');
   let editDirection = $state('lent');
@@ -82,6 +83,7 @@
 
   async function deleteLoan(id) {
     await db.loans.delete(id);
+    confirmDeleteId = null;
     showToast('Removed');
   }
 
@@ -138,10 +140,19 @@
             <button class="icon-btn small" aria-label="Edit loan" onclick={() => startEdit(l)}>
               <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
             </button>
-            <button class="icon-btn small" aria-label="Delete loan" onclick={() => deleteLoan(l.id)}>
+            <button class="icon-btn small" aria-label="Delete loan" onclick={() => (confirmDeleteId = l.id)}>
               <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
+          {#if confirmDeleteId === l.id}
+            <div class="del-confirm">
+              <span>Delete this loan with {l.person}?</span>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteId = null)}>Cancel</button>
+                <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteLoan(l.id)}>Delete</button>
+              </div>
+            </div>
+          {/if}
         {/if}
       {:else}
         <p class="hint" style="margin:2px 0;">No loans logged yet.</p>

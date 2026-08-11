@@ -110,9 +110,11 @@
     await db.template.put({ ...tmpl, bufferLabels: updated });
   }
 
+  let confirmDeleteLabelIdx = $state(null);
   async function deleteBufferLabel(index) {
     const updated = bufferLabels.filter((_, i) => i !== index);
     await db.template.put({ ...tmpl, bufferLabels: updated });
+    confirmDeleteLabelIdx = null;
   }
 
   function handlePickFile(e) {
@@ -218,10 +220,19 @@
     {#each bufferLabels as label, i (label)}
       <div class="set-row">
         <input class="cat-name-input buffer-label-input" value={label} onchange={(e) => renameBufferLabel(i, e)} />
-        <button class="cat-del" aria-label="Delete label" onclick={() => deleteBufferLabel(i)}>
+        <button class="cat-del" aria-label="Delete label" onclick={() => (confirmDeleteLabelIdx = i)}>
           <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
+      {#if confirmDeleteLabelIdx === i}
+        <div class="del-confirm">
+          <span>Remove "{label}"?</span>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteLabelIdx = null)}>Cancel</button>
+            <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteBufferLabel(i)}>Remove</button>
+          </div>
+        </div>
+      {/if}
     {:else}
       <p class="hint" style="margin:2px 0;">No labels yet — add one below.</p>
     {/each}
@@ -301,11 +312,4 @@ Guided tour disabled for now -- revisit later if still wanted.
     align-items: center;
     color: var(--dim);
   }
-  .del-confirm {
-    padding: 12px 6px 6px;
-    font-size: 12.5px;
-    color: var(--lo);
-    border-bottom: 1px solid var(--stroke);
-  }
-  .save-btn.danger { background: var(--red); color: #2a0709; }
 </style>

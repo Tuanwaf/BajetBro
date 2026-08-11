@@ -16,6 +16,25 @@ import { initInstallPrompt, isStandalone } from './lib/installPrompt.js';
 // installPrompt.js) that decides how long to give it before giving up.
 initInstallPrompt();
 
+// vite-plugin-pwa's `registerType: 'autoUpdate'` makes a freshly-downloaded
+// service worker skip waiting and activate itself in the background as soon
+// as it's ready -- but that alone doesn't reload the page that's already
+// open, so the tab keeps running the OLD cached JS/CSS until something
+// forces a refresh. Without this listener, "something" was the user
+// manually pulling to refresh 2-3 times in a row (each reload nudging the
+// browser and the new service worker one step closer to actually agreeing
+// on which version is current). `controllerchange` fires exactly once, the
+// moment the new service worker takes over -- reloading right then picks up
+// the new version immediately, automatically, in a single step.
+if ('serviceWorker' in navigator) {
+  let reloadedForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedForUpdate) return;
+    reloadedForUpdate = true;
+    window.location.reload();
+  });
+}
+
 // `100dvh` is supposed to track the true visible height on its own, but on
 // a fresh standalone-PWA launch iOS has repeatedly been observed reporting
 // a dvh value taller than what's actually visible before the WebView's

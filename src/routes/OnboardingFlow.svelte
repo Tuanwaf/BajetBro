@@ -261,6 +261,4 @@
   .cat-del, .cat-lock { background: none; border: none; padding: 4px; flex-shrink: 0; display: flex; align-items: center; }
   .cat-del { color: var(--dim); }
   .cat-lock { color: var(--gold); }
-  .del-confirm { padding: 12px 6px 6px; font-size: 12.5px; color: var(--lo); border-bottom: 1px solid var(--stroke); }
-  .save-btn.danger { background: var(--red); color: #2a0709; }
 </style>

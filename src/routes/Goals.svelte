@@ -332,9 +332,11 @@
     await db.goals.update(g.id, { closed: 0 });
     showToast(`${g.label} reopened`);
   }
+  let confirmDeleteGoalId = $state(null);
   async function deleteGoal(g) {
     await db.goals.delete(g.id);
     detailGoalId = null;
+    confirmDeleteGoalId = null;
     showToast('Goal deleted');
   }
 
@@ -348,10 +350,12 @@
       await db.goals.update(g.id, { spends: spendsArr });
       if (s.bankId) await adjustBankBalance(s.bankId, spendRM(g, s));
     });
+    confirmDeleteSpendIdx = null;
   }
 
   // inline spend edit
   let editSpendIdx = $state(null);
+  let confirmDeleteSpendIdx = $state(null);
   let editSpendLabel = $state('');
   let editSpendAmt = $state('');
   function startEditSpend(g, idx) {
@@ -382,6 +386,7 @@
   // the money never actually left ("stays in this bank"), so that case
   // touches no bank at all.
   let editAllocIdx = $state(null);
+  let confirmDeleteAllocIdx = $state(null);
   let editAllocAmt = $state('');
   function startEditAlloc(g, idx) {
     editAllocIdx = idx;
@@ -434,6 +439,7 @@
         if (a.heldInBankId) await adjustBankBalance(a.heldInBankId, -a.amount);
       }
     });
+    confirmDeleteAllocIdx = null;
     showToast('Removed');
   }
 
@@ -791,10 +797,19 @@
                 <button class="icon-btn small" aria-label="Edit contribution" onclick={() => startEditAlloc(g, i)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
                 </button>
-                <button class="icon-btn small" aria-label="Delete contribution" onclick={() => deleteAlloc(g, i)}>
+                <button class="icon-btn small" aria-label="Delete contribution" onclick={() => (confirmDeleteAllocIdx = i)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               </div>
+              {#if confirmDeleteAllocIdx === i}
+                <div class="del-confirm">
+                  <span>Delete this RM {fmt(Math.abs(a.amount))} contribution?</span>
+                  <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteAllocIdx = null)}>Cancel</button>
+                    <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteAlloc(g, i)}>Delete</button>
+                  </div>
+                </div>
+              {/if}
             {/if}
           {:else}
             <p class="hint" style="margin:2px 0;">Nothing added yet.</p>
@@ -825,10 +840,19 @@
                   <button class="icon-btn small" aria-label="Edit spend" onclick={() => startEditSpend(g, i)}>
                     <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
                   </button>
-                  <button class="icon-btn small" aria-label="Delete spend" onclick={() => deleteGoalSpend(g, i)}>
+                  <button class="icon-btn small" aria-label="Delete spend" onclick={() => (confirmDeleteSpendIdx = i)}>
                     <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
                 </div>
+                {#if confirmDeleteSpendIdx === i}
+                  <div class="del-confirm">
+                    <span>Delete this {s.label} spend?</span>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                      <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteSpendIdx = null)}>Cancel</button>
+                      <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteGoalSpend(g, i)}>Delete</button>
+                    </div>
+                  </div>
+                {/if}
               {/if}
             {:else}
               <p class="hint" style="margin:2px 0;">Nothing spent from this goal yet.</p>
@@ -921,9 +945,18 @@
         <div style="display:flex; gap:8px; margin-top:16px;">
           <button class="io-btn" style="flex:1;" onclick={() => startEditGoal(g)}>Edit goal</button>
           {#if (g.allocations?.length ?? 0) === 0 && (g.spends?.length ?? 0) === 0}
-            <button class="io-btn" style="flex:1; color:var(--red);" onclick={() => deleteGoal(g)}>Delete</button>
+            <button class="io-btn" style="flex:1; color:var(--red);" onclick={() => (confirmDeleteGoalId = g.id)}>Delete</button>
           {/if}
         </div>
+        {#if confirmDeleteGoalId === g.id}
+          <div class="del-confirm">
+            <span>Delete "{g.label}"? This can't be undone.</span>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteGoalId = null)}>Cancel</button>
+              <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteGoal(g)}>Delete</button>
+            </div>
+          </div>
+        {/if}
         <p class="hint" style="margin-top:12px;">Every contribution leaves its bank right away — check the note under each one to see whether it's kept aside, moved, or given away for good.</p>
       {/if}
     {/if}

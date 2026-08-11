@@ -32,6 +32,7 @@
   let moveMode = $state(false);
   let selectedIndices = $state([]);
   let editingIdx = $state(null);
+  let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
 
@@ -55,6 +56,7 @@
     moveMode = !moveMode;
     selectedIndices = [];
     editingIdx = null;
+    confirmDeleteIdx = null;
   }
   function toggleSelect(i) {
     selectedIndices = selectedIndices.includes(i) ? selectedIndices.filter((x) => x !== i) : [...selectedIndices, i];
@@ -70,6 +72,7 @@
 
   function startEdit(i, t) {
     editingIdx = i;
+    confirmDeleteIdx = null;
     moveMode = false;
     selectedIndices = [];
     const e = rawEntry(t.source);
@@ -85,6 +88,7 @@
   }
   async function removeEntry(t) {
     await deleteTaggedEntry(month, t.source);
+    confirmDeleteIdx = null;
     showToast('Removed');
   }
 
@@ -93,6 +97,7 @@
       moveMode = false;
       selectedIndices = [];
       editingIdx = null;
+      confirmDeleteIdx = null;
     }
   });
 </script>
@@ -189,11 +194,20 @@
                 <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(i, t)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
                 </button>
-                <button class="icon-btn small" aria-label="Delete entry" onclick={() => removeEntry(t)}>
+                <button class="icon-btn small" aria-label="Delete entry" onclick={() => (confirmDeleteIdx = i)}>
                   <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               {/if}
             </div>
+            {#if confirmDeleteIdx === i}
+              <div class="del-confirm">
+                <span>Delete this RM {fmt(t.amount)} entry?</span>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                  <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteIdx = null)}>Cancel</button>
+                  <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => removeEntry(t)}>Delete</button>
+                </div>
+              </div>
+            {/if}
           {/if}
         </div>
       {:else}

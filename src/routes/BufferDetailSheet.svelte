@@ -36,6 +36,7 @@
   let total = $derived(round2(entries.reduce((s, x) => s + (x.e.actual || 0), 0)));
 
   let editingIdx = $state(null);
+  let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
   let editLabel = $state('');
@@ -101,6 +102,7 @@
     // Give back whatever this entry had eaten into a goal's reserve --
     // it's not spending anymore once the entry itself is gone.
     if (x.e.bankId) await reconcileGoalReserve(x.e.bankId, x.e.reserveConsumption);
+    confirmDeleteIdx = null;
     showToast('Entry deleted');
     if (extras.filter((e) => e.name === label).length === 0) onClose();
   }
@@ -176,10 +178,19 @@
             <button class="icon-btn small" aria-label="Edit entry" onclick={() => startEdit(x)}>
               <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
             </button>
-            <button class="icon-btn small" aria-label="Delete entry" onclick={() => deleteEntry(x)}>
+            <button class="icon-btn small" aria-label="Delete entry" onclick={() => (confirmDeleteIdx = x.idx)}>
               <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
+          {#if confirmDeleteIdx === x.idx}
+            <div class="del-confirm">
+              <span>Delete this RM {fmt(fullOf(x.e))} entry?</span>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteIdx = null)}>Cancel</button>
+                <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteEntry(x)}>Delete</button>
+              </div>
+            </div>
+          {/if}
         {/if}
       {:else}
         <p class="hint" style="margin:2px 0;">No entries under this label.</p>
