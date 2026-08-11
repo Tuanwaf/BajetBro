@@ -4,12 +4,28 @@
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
+  import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
+  import { sheetPageCount } from '../lib/viewStore.js';
 
   let { open, category, onClose } = $props();
+
+  // .sheet-page (app.css), not a position:fixed overlay -- see
+  // BankFormSheet.svelte's comment for why: shares the root document scroll
+  // with the 4 tabs instead of its own nested scroller. Registers on
+  // sheetPageCount (not openSheetCount) so the tab bar hides while showing.
+  $effect(() => {
+    if (!open) return;
+    sheetPageCount.update((n) => n + 1);
+    return () => sheetPageCount.update((n) => n - 1);
+  });
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
   let pots = $derived($hutangPots ?? []);
+  let banksList = $derived($bankPreviewStore);
+  function bankName(id) {
+    return banksList.find((b) => b.bank.id === id)?.bank.name;
+  }
 
   let transactions = $derived.by(() => {
     const list = category?.transactions || [];
@@ -76,6 +92,11 @@
     );
     await writeCategories(cats);
     if (key === 'saving') await adjustPot(-txNet(tx));
+    if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount);
+    // Give back whatever this entry had eaten into a goal's reserve (see
+    // AddExpenseSheet's overspend warning) -- it's not spending anymore
+    // once the entry itself is gone.
+    if (tx.bankId) await reconcileGoalReserve(tx.bankId, tx.reserveConsumption);
     showToast('Entry deleted');
   }
 
@@ -91,35 +112,55 @@
     const destKey = editDest;
     const oldNet = txNet(tx);
     const newNet = round2(amt - paid);
-    const newTxFields = { amount: amt, date: tx.date, note: note || undefined, reimbursed: paid || undefined };
+    // A single object reference, reused below to find this exact entry
+    // again after the writes -- `month.categories` itself can't be trusted
+    // to reflect the write we JUST made (liveQuery hasn't necessarily
+    // re-emitted yet), so the reserve-reconciliation step re-locates it
+    // through this local reference instead of re-reading `month`.
+    const newTx = { amount: amt, date: tx.date, note: note || undefined, reimbursed: paid || undefined, bankId: tx.bankId };
+    let finalCats;
 
     if (destKey === srcKey) {
       const delta = round2(newNet - oldNet);
-      const cats = month.categories.map((c) =>
+      finalCats = month.categories.map((c) =>
         c.key === srcKey
-          ? {
-              ...c,
-              actual: round2(c.actual + delta),
-              transactions: (c.transactions || []).map((t) => (t === tx ? { ...t, ...newTxFields } : t)),
-            }
+          ? { ...c, actual: round2(c.actual + delta), transactions: (c.transactions || []).map((t) => (t === tx ? newTx : t)) }
           : c
       );
-      await writeCategories(cats);
+      await writeCategories(finalCats);
       if (srcKey === 'saving') await adjustPot(delta);
     } else {
-      let cats = month.categories.map((c) =>
+      finalCats = month.categories.map((c) =>
         c.key === srcKey
           ? { ...c, actual: round2(c.actual - oldNet), transactions: (c.transactions || []).filter((t) => t !== tx) }
           : c
       );
-      cats = cats.map((c) =>
-        c.key === destKey ? { ...c, actual: round2(c.actual + newNet), transactions: [...(c.transactions || []), newTxFields] } : c
+      finalCats = finalCats.map((c) =>
+        c.key === destKey ? { ...c, actual: round2(c.actual + newNet), transactions: [...(c.transactions || []), newTx] } : c
       );
-      await writeCategories(cats);
+      await writeCategories(finalCats);
       if (srcKey === 'saving') await adjustPot(-oldNet);
       if (destKey === 'saving') await adjustPot(newNet);
       const destName = tmpl?.categories.find((c) => c.key === destKey)?.name ?? '';
       showToast(`Moved to ${destName}`);
+    }
+    // Bank tag never changes here -- moving categories doesn't change which
+    // account physically paid for it, only the gross amount does.
+    if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount - amt);
+    // Re-derive this entry's effect on a goal's reserve against its NEW
+    // amount -- undoes whatever the OLD amount had consumed first, then
+    // consumes fresh if the new amount still dips in.
+    if (tx.bankId) {
+      const consumption = await reconcileGoalReserve(tx.bankId, tx.reserveConsumption);
+      if (consumption.length || tx.reserveConsumption?.length) {
+        finalCats = finalCats.map((c) => ({
+          ...c,
+          transactions: (c.transactions || []).map((t) =>
+            t === newTx ? { ...t, reserveConsumption: consumption.length ? consumption : undefined } : t
+          ),
+        }));
+        await writeCategories(finalCats);
+      }
     }
     editingIdx = null;
   }
@@ -134,15 +175,15 @@
   }
 </script>
 
-<div class="sheet" class:open>
-  <div class="sheet-hd">
+<div class="sheet-page" class:open>
+  <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
     <h2>{category?.name ?? ''}</h2>
     <span style="width:38px;"></span>
   </div>
-  <div class="sheet-body">
+  <div class="sheet-page-body">
     {#if category}
       <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; border-color: {category.color}; box-shadow: 4px 4px 0 {category.color};">
         <div style="display:flex; align-items:center; gap:8px;">
@@ -194,6 +235,7 @@
                 <div>
                   <div class="tx-date">{formatDate(tx.date)}{formatTime(tx.date) ? ` · ${formatTime(tx.date)}` : ''}</div>
                   {#if tx.note}<div class="tx-note">{tx.note}</div>{/if}
+                  {#if tx.bankId && bankName(tx.bankId)}<div class="tx-bank">via {bankName(tx.bankId)}</div>{/if}
                   {#if tx.reimbursed}<div class="tx-back">−RM {fmt(tx.reimbursed)} paid back · net RM {fmt(txNet(tx))}</div>{/if}
                 </div>
                 <span class="num tx-amt">RM {fmt(tx.amount)}</span>
@@ -236,6 +278,11 @@
   }
   .tx-note {
     font-size: 11.5px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+  .tx-bank {
+    font-size: 10.5px;
     color: var(--dim);
     margin-top: 2px;
   }

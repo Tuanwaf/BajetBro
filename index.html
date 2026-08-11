@@ -13,17 +13,33 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BajetBro" />
     <title>BajetBro</title>
-  </head>
-  <body>
-    <div id="splash">
-      <img src="%BASE_URL%icons/icon-512.png" alt="" width="112" height="112" />
-    </div>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
     <style>
+      /* Inline and in <head> so this is guaranteed to apply before <body>
+         even starts parsing -- this used to live after #splash's own <div>
+         in <body>, which left a brief real window where that div existed in
+         the DOM with no CSS applied yet at all (not even position:fixed),
+         since the parser hadn't reached this block yet. On a slow cold PWA
+         launch that window is long enough to actually be visible.
+         html/body's real background (--ink-2, cream) lives in app.css --
+         a separate stylesheet the browser has to fetch, not guaranteed to
+         be applied yet on the very first paint. Setting the same color here
+         too, inline, means any gap/seam around #splash (whatever its exact
+         cause) shows this correct cream fallback instead of the browser's
+         true default white -- confirmed on a fresh install (2026-08-11,
+         no prior app state to explain it any other way) that white, not
+         cream or Home content, was showing through at the bottom. */
+      html, body { margin: 0; background: #efe9d8; }
       #splash {
         position: fixed;
-        inset: 0;
+        /* Explicit longhand, not the `inset: 0` shorthand -- confirmed on a
+           fresh install (2026-08-11, no prior app state to explain it any
+           other way) that the bottom of the screen was showing raw white,
+           unstyled default background, not Home or anything from this app.
+           That's the signature of inset failing to apply on this device/iOS
+           version: the element falls back to sizing around just its content
+           (the small logo image) instead of stretching to the viewport,
+           leaving the rest of the screen with no background at all. */
+        top: 0; right: 0; bottom: 0; left: 0;
         z-index: 9999;
         display: flex;
         align-items: center;
@@ -33,9 +49,26 @@
            keep this in sync by hand if the app's background ever changes. */
         background: #efe9d8;
         transition: opacity 0.35s ease;
+        will-change: opacity;
       }
+      /* Hidden until #splash.ready (see the inline script in <body>) --
+         "pushed up, then snaps into center" on a cold PWA launch is iOS
+         reporting an unsettled/incorrect viewport height for the first
+         paint or two before correcting it (the same class of instability
+         main.js's updateAppVh() already works around, for a different
+         symptom). #splash's flex centering recomputes against whatever the
+         CURRENT height is, so if that height starts wrong and then
+         corrects, the centered logo visibly jumps when it does. Not
+         showing the logo until the viewport has actually stabilized means
+         there's nothing to jump -- it just appears already in the right
+         place. The solid background fill isn't gated on this since a plain
+         color has nothing to visibly recenter. */
       #splash img {
         border-radius: 22px;
+        opacity: 0;
+      }
+      #splash.ready img {
+        opacity: 1;
         animation: splash-pulse 1.4s ease-in-out infinite;
       }
       #splash.splash-hide {
@@ -47,5 +80,38 @@
         50% { transform: scale(1.08); opacity: 0.75; }
       }
     </style>
+  </head>
+  <body>
+    <div id="splash">
+      <img src="icons/icon-512.png" alt="" width="112" height="112" />
+    </div>
+    <!-- Plain classic script (not type="module"), placed immediately after
+         #splash, so it runs synchronously as part of the initial parse --
+         needs to attach the visualViewport listener as early as possible.
+         Reveals the logo on the FIRST viewport resize event (the settling
+         this is working around) or after 200ms, whichever comes first --
+         the timeout is a fallback for whenever the viewport happens to
+         already be correct on the very first paint, in which case no
+         resize event would ever fire and the logo would otherwise stay
+         invisible forever. 200ms is comfortably inside the 450ms minimum
+         splash time main.js already enforces, so this can't make a normal
+         load feel any slower than it already did. -->
+    <script>
+      (function () {
+        var splash = document.getElementById('splash');
+        if (!splash) return;
+        var revealed = false;
+        function reveal() {
+          if (revealed) return;
+          revealed = true;
+          splash.classList.add('ready');
+          if (window.visualViewport) window.visualViewport.removeEventListener('resize', reveal);
+        }
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', reveal);
+        setTimeout(reveal, 200);
+      })();
+    </script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

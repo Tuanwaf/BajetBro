@@ -1,5 +1,5 @@
 <script>
-  import { currentView, addOpen, addIntent, addOriginRect } from './lib/viewStore.js';
+  import { currentView, addOpen, addIntent, addOriginRect, openSheetCount, sheetPageCount } from './lib/viewStore.js';
   import { currentMonth, template } from './lib/stores.js';
   import { showToast } from './lib/toast.js';
   import TabBar from './lib/components/TabBar.svelte';
@@ -75,6 +75,14 @@
     requestAnimationFrame(refreshBounce);
   });
 
+  // Same reasoning, for End Month specifically -- it's a .sheet-page now
+  // (see app.css), sharing the same root scroll as the 4 tabs it swaps out,
+  // so opening/closing it needs the same top-reset as switching tabs does.
+  $effect(() => {
+    endMonthSheetOpen;
+    window.scrollTo(0, 0);
+  });
+
   // Re-check whenever the content's height changes -- expanding/collapsing a
   // History month, data loading, etc. -- and on viewport resize/rotation.
   $effect(() => {
@@ -97,6 +105,21 @@
       document.removeEventListener('focusout', handleFocusOut);
     };
   });
+
+  // The page behind a sheet stays mounted and scrollable during the sheet's
+  // own open/close animation on purpose -- the FAB's grow/shrink morph and
+  // every other sheet's slide need to reveal/cover real page content as they
+  // animate, not a blank shell. Gating on keyboardOpen (rather than just
+  // "a sheet is open") means this only kicks in once the keyboard is
+  // actually up inside an already-open sheet -- a state that can't overlap
+  // with those animations, since nothing can be focused before a sheet has
+  // finished opening. That's also exactly the precondition behind the
+  // keyboard/scroll bug in FAB_KEYBOARD_SCROLL_BUG.md: the page behind only
+  // needs to stop being real, scrollable content for that specific window.
+  $effect(() => {
+    document.body.classList.toggle('sheet-open', $openSheetCount > 0);
+    document.body.classList.toggle('keyboard-open', keyboardOpen);
+  });
 </script>
 
 <div class="app-shell">
@@ -108,6 +131,7 @@
     {/if}
   {:else}
     <div class="view" bind:this={viewEl}>
+      <div style:display={endMonthSheetOpen ? 'none' : 'contents'}>
       <section class="page" class:active={$currentView === 'home'}>
         <Home onEndMonth={() => (endMonthSheetOpen = true)} />
       </section>
@@ -120,12 +144,14 @@
       <section class="page" class:active={$currentView === 'settings'}>
         <Settings />
       </section>
+      </div>
+
+      <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
     </div>
 
-    <TabBar onAddClick={handleAddClick} hidden={keyboardOpen} />
+    <TabBar onAddClick={handleAddClick} hidden={keyboardOpen || $sheetPageCount > 0} />
 
     <AddExpenseSheet open={$addOpen} intent={$addIntent} originRect={$addOriginRect} onClose={closeAdd} />
-    <EndMonthSheet open={endMonthSheetOpen} onClose={() => (endMonthSheetOpen = false)} />
 
     <!-- <GuideOverlay /> -->
     <InstallBanner hidden={$addOpen || endMonthSheetOpen} />

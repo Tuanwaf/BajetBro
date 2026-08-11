@@ -4,10 +4,24 @@
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
+  import { banks as bankPreviewStore, adjustBankBalance } from '../lib/bankPreviewStore.js';
+  import { sheetPageCount } from '../lib/viewStore.js';
 
   let { open, onClose } = $props();
 
+  // See CategoryDetailSheet.svelte's comment -- .sheet-page, registers on
+  // sheetPageCount, not openSheetCount.
+  $effect(() => {
+    if (!open) return;
+    sheetPageCount.update((n) => n + 1);
+    return () => sheetPageCount.update((n) => n - 1);
+  });
+
   let month = $derived($currentMonth);
+  let banksList = $derived($bankPreviewStore);
+  function bankName(id) {
+    return banksList.find((b) => b.bank.id === id)?.bank.name;
+  }
   let list = $derived.by(() => {
     const r = month?.reimbursements || [];
     return r.map((e, idx) => ({ e, idx })).sort((a, b) => new Date(b.e.date || 0) - new Date(a.e.date || 0));
@@ -26,13 +40,16 @@
   async function saveEdit() {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
+    const original = month.reimbursements[editingIdx];
     const reimbursements = month.reimbursements.map((r, i) => (i === editingIdx ? { ...r, amount: amt, note: editNote.trim() || undefined } : r));
     await db.months.update(month.key, { reimbursements });
+    if (original.bankId) await adjustBankBalance(original.bankId, amt - original.amount);
     editingIdx = null;
   }
   async function deleteEntry(x) {
     const reimbursements = month.reimbursements.filter((_, i) => i !== x.idx);
     await db.months.update(month.key, { reimbursements });
+    if (x.e.bankId) await adjustBankBalance(x.e.bankId, -x.e.amount);
     showToast('Removed');
     if (!reimbursements.length) onClose();
   }
@@ -44,15 +61,15 @@
   }
 </script>
 
-<div class="sheet" class:open>
-  <div class="sheet-hd">
+<div class="sheet-page" class:open>
+  <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
     <h2>Paid back to you</h2>
     <span style="width:38px;"></span>
   </div>
-  <div class="sheet-body">
+  <div class="sheet-page-body">
     <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; border-color:var(--good); box-shadow: 4px 4px 0 var(--good);">
       <span style="font-size:13px; color:var(--lo); font-weight:600;">Total credited this month</span>
       <span class="num" style="font-size:18px; font-weight:700; color:var(--good);">RM {fmt(total)}</span>
@@ -74,6 +91,7 @@
             <div>
               <div class="tx-note-main">{x.e.note || 'Paid back'}</div>
               <div class="tx-date">{formatDate(x.e.date)}</div>
+              {#if x.e.bankId && bankName(x.e.bankId)}<div class="tx-bank">via {bankName(x.e.bankId)}</div>{/if}
             </div>
             <span class="num tx-amt">+RM {fmt(x.e.amount)}</span>
             <button class="icon-btn small" aria-label="Edit" onclick={() => startEdit(x)}>
@@ -98,6 +116,7 @@
   .tx-row > div:first-child { flex: 1; min-width: 0; }
   .tx-note-main { font-size: 13.5px; font-weight: 600; color: var(--hi); }
   .tx-date { font-size: 11px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }
+  .tx-bank { font-size: 10.5px; color: var(--dim); margin-top: 2px; }
   .tx-amt { font-weight: 600; color: var(--good); }
   .icon-btn.small { width: 28px; height: 28px; }
   .icon-btn.small + .icon-btn.small { margin-left: 6px; }

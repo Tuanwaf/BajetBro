@@ -9,7 +9,6 @@ const CATEGORY_META = [
   { key: 'phone', name: 'Bill Phone', color: '#38c6d9' },
   { key: 'petrol', name: 'Minyak motor', color: '#f2994a' },
   { key: 'food', name: 'Makan', color: '#c084f5' },
-  { key: 'spotify', name: 'Spotify', color: '#3ddc97' },
   { key: 'saving', name: 'Saving', color: '#e7b34e' },
 ];
 

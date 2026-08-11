@@ -151,6 +151,28 @@ body {
 .page { display: none; }
 .page.active { display: block; }
 
+/* See the $effect in App.svelte: while a sheet is open AND the on-screen
+   keyboard is up, the page behind stops being real scrollable content
+   instead of just being visually covered -- see FAB_KEYBOARD_SCROLL_BUG.md
+   for why the page behind needs to not be scrollable at all, not just
+   hidden under the sheet, during that specific window.
+   `overflow: hidden` + `max-height: 0`, NOT `display: none` -- several
+   sheets (LoanLogSheet, BufferDetailSheet, CategoryDetailSheet,
+   ReimbursementsSheet, BankTransactionsSheet, ManageBanksSheet,
+   BankFormSheet) render as DESCENDANTS of .view, inside their owning page's
+   own markup, not as siblings of it like AddExpenseSheet/EndMonthSheet are.
+   `display: none` on .view would remove those sheets from the render tree
+   too and blur their focused field the instant the keyboard tried to open
+   (confirmed on Loan Log: keyboard couldn't open at all). Collapsing .view's
+   box instead leaves its `position: fixed` sheet descendants completely
+   unaffected -- fixed elements aren't clipped by a non-transformed
+   ancestor's overflow/height -- while still zeroing out the real page
+   content's contribution to the document's scroll height. */
+body.sheet-open.keyboard-open .view {
+  overflow: hidden;
+  max-height: 0;
+}
+
 h2.title {
   font-family: var(--display);
   font-size: 26px;
@@ -424,10 +446,29 @@ h2.title {
   transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
   z-index: 60;
   display: flex; flex-direction: column;
+  /* AddExpenseSheet's own .add-sheet has carried this from the start (see
+     its comment: removing it made a keyboard bug MORE frequent, confirmed
+     2026-08-10) -- a persistent GPU layer keeps position:fixed reliably
+     pinned through touch/scroll events instead of WebKit only promoting
+     this to its own layer reactively (and demoting it again once idle).
+     Every other sheet has been missing this the whole time; extending it
+     here since it's the one concrete, already-proven difference between
+     the sheet that doesn't have the stuck-scroll bug and the ones that do. */
+  will-change: transform;
 }
 .sheet.open { transform: translateY(0); }
-.sheet-hd { display: flex; align-items: center; justify-content: space-between; padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px 8px; flex-shrink: 0; }
-.sheet-hd h2 { font-family: var(--display); font-size: 19px; font-weight: 700; margin: 0; }
+.sheet-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(env(safe-area-inset-top, 0px) + 20px) 20px 8px; flex-shrink: 0; }
+/* flex:1 + min-width:0 + ellipsis -- without it, a long title (a goal name,
+   category name, buffer label, bank name -- all user-controlled, all shown
+   here across different sheets) sits at its full content width by default
+   (a flex item's min-width is auto, not 0), overflowing past the fixed-width
+   icon buttons on either side instead of truncating. */
+.sheet-hd h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-family: var(--display); font-size: 19px; font-weight: 700; margin: 0; }
+/* .sheet-page-hd's h2 had no rule at all until now -- every sheet migrated
+   to .sheet-page (see that class's own comment) was rendering its title
+   with unstyled default browser <h2> sizing/margin instead of the app's own
+   look, on top of the same missing-min-width truncation issue as above. */
+.sheet-page-hd h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-family: var(--display); font-size: 19px; font-weight: 700; margin: 0; }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 50%;
   background: var(--panel-2); border: 2px solid var(--stroke-2); color: var(--lo);
@@ -459,8 +500,34 @@ h2.title {
 .icon-btn[aria-label="Clear paid-back amount"] {
   background: var(--red); color: #fff;
 }
-.sheet-body { flex: 1; overflow-y: auto; padding: 8px 20px 24px; scrollbar-width: none; }
+/* Tried overscroll-behavior-y: contain here on a theory that overscroll was
+   chaining into the page behind the sheet -- confirmed on-device (2026-08-10)
+   that it wasn't actually chaining, and `contain` itself is a known WebKit
+   trigger for a *worse* bug: touching the screen again while the rubber-band
+   bounce hasn't finished settling causes the scroll to snap and freeze
+   completely until the touch is released. Reverted; see git history if that
+   chaining theory needs revisiting for a different symptom. */
+.sheet-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 20px 24px; scrollbar-width: none; }
 .sheet-body::-webkit-scrollbar { display: none; }
+
+/* .sheet-page: an alternative to .sheet for content that swaps into the
+   SAME root/document scroll the 4 main tabs use (see .page above), instead
+   of being a position:fixed overlay with its own nested overflow:auto
+   scroller. Confirmed on-device (2026-08-11) that the fixed-overlay shape
+   itself -- not any per-sheet CSS -- is what causes the hold-during-bounce
+   freeze: even AddExpenseSheet, which already has will-change and is
+   otherwise the most defended sheet, has the same bug. Manage Banks / Bank
+   Form are the first sheets migrated to this pattern.
+   No position/inset/z-index/overflow here on purpose -- it's meant to
+   render as normal in-flow content inside .view, exactly like .page does,
+   so .view's own padding (safe-area, tab-bar clearance) applies to it
+   automatically instead of needing its own copy of that math. This is also
+   why there's no slide transition yet (.page doesn't have one either) --
+   revisit that separately once the scroll-freeze fix itself is confirmed. */
+.sheet-page { display: none; background: var(--ink); }
+.sheet-page.open { display: block; }
+.sheet-page-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 10px; flex-shrink: 0; }
+.sheet-page-body { padding: 8px 0 24px; }
 
 .amt-display { text-align: center; padding: 22px 0 18px; }
 .amt-display .cur { font-size: 18px; color: var(--lo); vertical-align: 6px; margin-right: 4px; }

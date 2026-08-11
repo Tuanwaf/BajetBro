@@ -63,7 +63,7 @@
 <div class="carousel" bind:this={scrollerEl} onscroll={onScroll}>
   {#each banks as b (b.bank.id)}
     <div class="slide">
-      <BankCard bank={b.bank} balance={b.balance} income={b.income} spending={b.spending} isMain={b.bank.isMain} />
+      <BankCard bank={b.bank} balance={b.balance} income={b.income} spending={b.spending} reserved={b.reserved} fixedDeposit={b.fixedDeposit} isMain={b.bank.isMain} />
     </div>
   {/each}
 </div>

@@ -5,7 +5,7 @@
   // markup instead of two drifting copies. The caller owns the surrounding
   // chrome (sheet header, Save/Delete buttons, or the onboarding step's own
   // Next button) and just binds these fields.
-  import { GOAL_COLORS, BANK_ICONS, BANK_LOGOS, CARD_DESIGNS, getCardDesign, cardBorderColor } from '../constants.js';
+  import { GOAL_COLORS, BANK_ICONS, BANK_LOGOS, CARD_DESIGNS, getCardDesign, cardBorderColor, bankTypeLabel } from '../constants.js';
   import { fmt } from '../format.js';
   import BankIcon from './BankIcon.svelte';
   import CardPattern from './CardPattern.svelte';
@@ -13,6 +13,7 @@
   let {
     name = $bindable(''),
     balance = $bindable(''),
+    fixedDeposit = $bindable(''),
     type = $bindable('bank'),
     isMain = $bindable(false),
     color = $bindable(GOAL_COLORS[0]),
@@ -29,7 +30,7 @@
     onEnter = () => {},
   } = $props();
 
-  let previewTag = $derived(isMain ? 'Main bank' : type === 'ewallet' ? 'E-wallet' : 'Bank');
+  let previewTag = $derived(isMain ? 'Main bank' : bankTypeLabel(type));
   let previewDesign = $derived(getCardDesign(design));
   let previewBorderColor = $derived(cardBorderColor({ color, design }));
 </script>
@@ -63,22 +64,17 @@
   </div>
 </div>
 
-<div class="field-lbl">Name</div>
-<input class="note-input" placeholder="e.g. Bank Islam" bind:value={name} onkeydown={(e) => e.key === 'Enter' && onEnter()} />
-
-<div class="field-lbl">Balance</div>
-<input class="note-input" type="number" inputmode="decimal" placeholder="0.00" bind:value={balance} />
-
-<div class="field-lbl">Type</div>
-<div class="chip-grid">
-  <button class="chip" class:selected={type === 'bank'} onclick={() => (type = 'bank')}>Bank</button>
-  <button class="chip" class:selected={type === 'ewallet'} onclick={() => (type = 'ewallet')}>E-wallet</button>
+<div class="field-lbl">Card design</div>
+<div class="chip-scroll">
+  {#each CARD_DESIGNS as d}
+    <button class="design-swatch" class:selected={design === d.key} onclick={() => (design = d.key)}>
+      <span class="design-preview" style="background:{d.bg};">
+        <CardPattern kind={d.pattern} color={d.patternColor} opacity={d.patternOpacity} />
+      </span>
+      <span class="design-label">{d.label}</span>
+    </button>
+  {/each}
 </div>
-
-<div class="field-lbl">Main bank</div>
-<button class="chip" class:selected={isMain} onclick={() => (isMain = !isMain)}>
-  {isMain ? '✓ ' : ''}Receives salary / main bank
-</button>
 
 {#if design === 'classic'}
   <div class="field-lbl">Color</div>
@@ -92,17 +88,27 @@
   <p class="hint" style="margin:0 4px;">This design has its own matching border/shadow accent. Pick Classic to choose a custom color instead.</p>
 {/if}
 
-<div class="field-lbl">Card design</div>
-<div class="chip-scroll">
-  {#each CARD_DESIGNS as d}
-    <button class="design-swatch" class:selected={design === d.key} onclick={() => (design = d.key)}>
-      <span class="design-preview" style="background:{d.bg};">
-        <CardPattern kind={d.pattern} color={d.patternColor} opacity={d.patternOpacity} />
-      </span>
-      <span class="design-label">{d.label}</span>
-    </button>
-  {/each}
+<div class="field-lbl">Name</div>
+<input class="note-input" placeholder="e.g. Bank Islam" bind:value={name} onkeydown={(e) => e.key === 'Enter' && onEnter()} />
+
+<div class="field-lbl">Balance</div>
+<input class="note-input" type="number" inputmode="decimal" placeholder="0.00" bind:value={balance} />
+
+<div class="field-lbl">Fixed deposit <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
+<input class="note-input" type="number" inputmode="decimal" placeholder="0.00 — locked, can't be spent" bind:value={fixedDeposit} />
+<p class="hint" style="margin:0 4px 12px;">Already counted in the Balance above -- just marks that part of it as locked, so it's excluded from what shows as free to spend.</p>
+
+<div class="field-lbl">Type</div>
+<div class="chip-grid">
+  <button class="chip" class:selected={type === 'bank'} onclick={() => (type = 'bank')}>Bank</button>
+  <button class="chip" class:selected={type === 'ewallet'} onclick={() => (type = 'ewallet')}>E-wallet</button>
+  <button class="chip" class:selected={type === 'card'} onclick={() => (type = 'card')}>Card</button>
 </div>
+
+<div class="field-lbl">Main bank</div>
+<button class="chip" class:selected={isMain} onclick={() => (isMain = !isMain)}>
+  {isMain ? '✓ ' : ''}Receives salary / main bank
+</button>
 
 <div class="field-lbl">Bank logo</div>
 <div class="chip-scroll">
@@ -141,6 +147,17 @@
   .chip-scroll {
     display: flex; gap: 8px;
     overflow-x: auto;
+    /* No touch-action/overscroll-behavior override here -- both were tried
+       (2026-08-11) to fix an axis-conflict theory and each caused something
+       worse: touch-action: pan-x turned out to fully block vertical
+       scrolling for any touch starting on/near this row (confirmed
+       on-device -- it doesn't hand off to the root scroll the way it's
+       supposed to per spec; this DOM's exact nesting apparently hits a real
+       WebKit gap, not just a hypothetical one), and overscroll-behavior-x:
+       contain froze the whole page's scroll on touch, same mechanism as the
+       .sheet-body finding elsewhere in this file's git history. Plain
+       default (auto) is what AddExpenseSheet's own never-touched
+       .chip-scroll already uses, and it works fine there. */
     scrollbar-width: none;
     margin-bottom: 6px;
     padding: 4px 2px 6px;

@@ -20,7 +20,12 @@ export function computeLiveAdjustment(month) {
   return round2(
     (month.categories || []).reduce((s, c) => {
       if (c.locked) return s + (c.lockedLeftover || 0);
-      return s + Math.min(0, c.planned - c.actual);
+      // `|| 0` guards against a category with no `actual` at all (e.g. a
+      // freshly-added one) -- without it, `c.planned - c.actual` is NaN,
+      // and since `s` itself becomes NaN the instant that happens, every
+      // category AFTER it in this reduce gets silently poisoned too, not
+      // just the one missing `actual`.
+      return s + Math.min(0, c.planned - (c.actual || 0));
     }, 0)
   );
 }
@@ -29,6 +34,16 @@ export function computeLiveAdjustment(month) {
 // forward balance + salary + bonus + additional income), NOT just this
 // month's Salary -- otherwise Buffer understates what's actually available
 // and never matches the Income figure shown elsewhere on Home.
+//
+// KEPT ONLY for backfillSingleBank's one-time bootstrap (see
+// bankPreviewStore.js) -- there's no bank list yet at that exact moment, so
+// this old single-pool figure is the only thing available to seed the
+// first bank's balance from. Every LIVE call site (Home, Settings,
+// EndMonthSheet) uses computeBufferPlannedLive below instead -- see its
+// comment for why: this version has no idea a bank even exists, so any
+// money moved by a Transfer or a goal contribution/withdrawal (see
+// bankPreviewStore.js) is invisible to it, and it silently drifts from
+// reality forever after.
 export function computeBufferPlanned(month) {
   const coreSum = (month.categories || []).reduce((s, c) => s + c.planned, 0);
   const totalBalance = computeTotalBalance(month);
@@ -41,18 +56,59 @@ export function computeBufferPlanned(month) {
 // instead (that's what's really been drawn from the pool), everyone else
 // counts their planned figure, plus Buffer itself. This always nets back to
 // exactly the Income figure, regardless of locking or overspending.
+//
+// See computeBufferPlanned's comment -- kept only for the same bootstrap
+// reason; live call sites use computePlannedTotalLive.
 export function computePlannedTotal(month) {
   const categories = month.categories || [];
-  const coreTotal = categories.reduce((s, c) => s + (c.locked || c.actual > c.planned ? c.actual : c.planned), 0);
+  const coreTotal = categories.reduce((s, c) => s + (c.locked || c.actual > c.planned ? c.actual || 0 : c.planned), 0);
   return round2(coreTotal + computeBufferPlanned(month));
 }
 
 export function computeBufferActual(month) {
-  return round2((month.extras || []).reduce((s, e) => s + e.actual, 0));
+  return round2((month.extras || []).reduce((s, e) => s + (e.actual || 0), 0));
+}
+
+// The REAL, live "how much do I actually have" figure -- summed straight
+// from every bank's free-to-spend money (balance minus whatever's reserved
+// for open goals or locked in a fixed deposit -- the same "free" number
+// each BankCard already shows). Takes the *enriched* bank list from
+// bankPreviewStore.js's `banks` derived store (each entry already carries
+// `.reserved`), not raw db.banks.
+//
+// This is what closes the gap between Buffer/Commitments and reality:
+// unlike the old single-pool figures above, a Transfer, a goal
+// contribution/withdrawal, or anything else that moves money between banks
+// without ever touching a category shows up here immediately, because it's
+// reading the bank balances those operations actually changed -- not a
+// separate `month.startingBalance` chain that never heard about them.
+export function computeBankFreeTotal(banks) {
+  return round2((banks || []).reduce((s, b) => s + Math.max(0, (b.balance || 0) - (b.reserved || 0) - (b.fixedDeposit || 0)), 0));
+}
+
+// Live version of computeBufferPlanned, anchored to computeBankFreeTotal
+// instead of month.startingBalance. `liveTotal` already has every real
+// transaction's effect baked in -- categories, buffer, transfers, goals,
+// all of it -- so the only thing left to subtract is money not yet spent
+// but still owed to an open (non-locked) category. A locked category is
+// done: whatever it under/overspent already shows up inside `liveTotal`
+// directly (the bank it was paid from already moved), so unlike
+// computeLiveAdjustment there's no separate leftover/overspend bookkeeping
+// needed here at all.
+export function computeBufferPlannedLive(month, liveTotal) {
+  const owed = (month.categories || []).reduce((s, c) => (c.locked ? s : s + Math.max(0, c.planned - (c.actual || 0))), 0);
+  return round2(liveTotal - owed + computeBufferActual(month));
+}
+
+// Live version of computePlannedTotal, using computeBufferPlannedLive.
+export function computePlannedTotalLive(month, liveTotal) {
+  const categories = month.categories || [];
+  const coreTotal = categories.reduce((s, c) => s + (c.locked || c.actual > c.planned ? c.actual || 0 : c.planned), 0);
+  return round2(coreTotal + computeBufferPlannedLive(month, liveTotal));
 }
 
 export function computeCoreActual(month) {
-  return round2((month.categories || []).reduce((s, c) => s + c.actual, 0));
+  return round2((month.categories || []).reduce((s, c) => s + (c.actual || 0), 0));
 }
 
 // Live total for the current/open month -- computed from line items, not the
@@ -88,6 +144,10 @@ export function computeReimbursedTotal(month) {
 
 // True cash-on-hand and the figure that rolls forward into next month's
 // Income balance. Reimbursements received this month add to it.
+//
+// KEPT ONLY for backfillSingleBank's one-time bootstrap (see
+// computeBufferPlanned's comment above -- same reasoning). Live call sites
+// use computeBankFreeTotal(banks) instead.
 export function computeTotalRemaining(month) {
   const reimbursed = computeReimbursedTotal(month);
   const totalBalance = computeTotalBalance(month);
@@ -135,9 +195,23 @@ export function computeDividendsTotal(dividends) {
 // A goal's ledgers are derived, never stored as running totals, so edits and
 // deletes to individual entries always reconcile.
 
-// Money put into a goal so far (reserved for savings goals, given for giving).
+// Money put into a goal so far, in total -- this is what the progress bar and
+// "reached" check care about, so it counts given-away amounts too (giving
+// money away still counts as progress toward the goal, it just isn't
+// sitting anywhere spendable afterward).
 export function goalAllocated(g) {
   return round2((g.allocations || []).reduce((s, a) => s + (a.amount || 0), 0));
+}
+
+// Whether one allocation's money is still sitting somewhere spendable.
+// heldInBankId is the source of truth once it's present (null = given away
+// for good, a bank id = reserved there). Allocations from before this field
+// existed never set it at all -- those fall back to the goal's old `type`
+// (every pre-redesign "giving" allocation left for good; every "savings"
+// one was reserved), so old data keeps behaving exactly as it always did.
+export function allocIsReserved(g, a) {
+  if ('heldInBankId' in a) return a.heldInBankId != null;
+  return g.type !== 'giving';
 }
 
 // RM value of one spend: convert at the goal's rate only when it was logged in
@@ -151,9 +225,40 @@ export function goalSpent(g) {
   return round2((g.spends || []).reduce((s, x) => s + spendRM(g, x), 0));
 }
 
-// For savings goals: money still sitting in the goal (reserved but not spent).
+// Money still sitting in the goal, reserved but not spent -- excludes
+// anything already given away for good, since that's gone regardless of
+// whether the goal's target has been reached. This is the only figure
+// "Spend on a goal" can draw against.
 export function goalReserveLeft(g) {
-  return round2(goalAllocated(g) - goalSpent(g));
+  const reserved = round2((g.allocations || []).reduce((s, a) => s + (allocIsReserved(g, a) ? a.amount || 0 : 0), 0));
+  return round2(reserved - goalSpent(g));
+}
+
+// Per-bank breakdown of a goal's reserve -- spending on (or taking money out
+// of) a goal has to come from wherever that reserve actually sits, not an
+// arbitrary bank. Picking the wrong one would debit a bank that never
+// actually held the money, while the goal's own numbers looked unchanged
+// either way (goalReserveLeft doesn't care which bank absorbs a spend).
+// Allocations from before bank-tagging existed have no heldInBankId to
+// attribute to a bank, so they're simply left out here (goalReserveLeft
+// still counts them in the total -- callers that can't fully cover that
+// total from this breakdown should fall back to an unrestricted picker).
+export function goalReserveByBank(g) {
+  const map = new Map();
+  const add = (bankId, amount) => {
+    if (!bankId) return;
+    map.set(bankId, round2((map.get(bankId) || 0) + amount));
+  };
+  for (const a of g.allocations || []) {
+    if (!allocIsReserved(g, a)) continue;
+    add(a.heldInBankId, a.amount || 0);
+  }
+  for (const s of g.spends || []) {
+    add(s.bankId, -spendRM(g, s));
+  }
+  return [...map.entries()]
+    .map(([bankId, amount]) => ({ bankId, amount: round2(amount) }))
+    .filter((x) => x.amount > 0.005);
 }
 
 export function goalReached(g) {

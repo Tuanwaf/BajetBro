@@ -5,10 +5,24 @@
   import { showToast } from '../lib/toast.js';
   import { BUFFER_COLOR } from '../lib/constants.js';
   import db from '../lib/db.js';
+  import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
+  import { sheetPageCount } from '../lib/viewStore.js';
 
   let { open, label, onClose } = $props();
 
+  // See CategoryDetailSheet.svelte's comment -- .sheet-page, registers on
+  // sheetPageCount, not openSheetCount.
+  $effect(() => {
+    if (!open) return;
+    sheetPageCount.update((n) => n + 1);
+    return () => sheetPageCount.update((n) => n - 1);
+  });
+
   let month = $derived($currentMonth);
+  let banksList = $derived($bankPreviewStore);
+  function bankName(id) {
+    return banksList.find((b) => b.bank.id === id)?.bank.name;
+  }
 
   // Entries under this label, each paired with its index in month.extras so
   // edits/deletes target the right row (index-based, not object identity).
@@ -56,20 +70,37 @@
     if (!amt) return showToast('Enter an amount first');
     const paidInput = parseFloat(editPaid) || 0;
     const original = month.extras[editingIdx];
+    const oldFull = fullOf(original);
     const paid = editPaidAbsolute
       ? Math.min(Math.max(paidInput, 0), amt) // direct override of the total
       : Math.min(Math.max((original.reimbursed || 0) + paidInput, 0), amt); // stacks onto what's already recorded
     const name = editLabel.trim() || label;
-    const extras = month.extras.map((e, i) =>
+    let extras = month.extras.map((e, i) =>
       i === editingIdx ? { ...e, actual: round2(amt - paid), reimbursed: paid || undefined, note: editNote.trim() || undefined, name } : e
     );
     await db.months.update(month.key, { extras });
+    if (original.bankId) await adjustBankBalance(original.bankId, oldFull - amt);
+    // Re-derive this entry's effect on a goal's reserve against its NEW
+    // amount (see AddExpenseSheet's overspend warning for how it first got
+    // there) -- undoes whatever the OLD amount had consumed, then consumes
+    // fresh if the new amount still dips in.
+    if (original.bankId) {
+      const consumption = await reconcileGoalReserve(original.bankId, original.reserveConsumption);
+      if (consumption.length || original.reserveConsumption?.length) {
+        extras = extras.map((e, i) => (i === editingIdx ? { ...e, reserveConsumption: consumption.length ? consumption : undefined } : e));
+        await db.months.update(month.key, { extras });
+      }
+    }
     editingIdx = null;
     if (name !== label) showToast(`Moved to ${name}`);
   }
   async function deleteEntry(x) {
     const extras = month.extras.filter((_, i) => i !== x.idx);
     await db.months.update(month.key, { extras });
+    if (x.e.bankId) await adjustBankBalance(x.e.bankId, fullOf(x.e));
+    // Give back whatever this entry had eaten into a goal's reserve --
+    // it's not spending anymore once the entry itself is gone.
+    if (x.e.bankId) await reconcileGoalReserve(x.e.bankId, x.e.reserveConsumption);
     showToast('Entry deleted');
     if (extras.filter((e) => e.name === label).length === 0) onClose();
   }
@@ -86,15 +117,15 @@
   }
 </script>
 
-<div class="sheet" class:open>
-  <div class="sheet-hd">
+<div class="sheet-page" class:open>
+  <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
     <h2>{label ?? ''}</h2>
     <span style="width:38px;"></span>
   </div>
-  <div class="sheet-body">
+  <div class="sheet-page-body">
     <div class="card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; border-color: {BUFFER_COLOR}; box-shadow: 4px 4px 0 {BUFFER_COLOR};">
       <div style="display:flex; align-items:center; gap:8px;">
         <span class="dot" style="background:{BUFFER_COLOR}"></span>
@@ -138,6 +169,7 @@
             <div>
               <div class="tx-date">{formatDate(x.e.date)}{formatTime(x.e.date) ? ` · ${formatTime(x.e.date)}` : ''}</div>
               {#if x.e.note}<div class="tx-note">{x.e.note}</div>{/if}
+              {#if x.e.bankId && bankName(x.e.bankId)}<div class="tx-bank">via {bankName(x.e.bankId)}</div>{/if}
               {#if x.e.reimbursed}<div class="tx-back">−RM {fmt(x.e.reimbursed)} paid back · net RM {fmt(x.e.actual)}</div>{/if}
             </div>
             <span class="num tx-amt">RM {fmt(fullOf(x.e))}</span>
@@ -179,6 +211,11 @@
   }
   .tx-note {
     font-size: 11.5px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+  .tx-bank {
+    font-size: 10.5px;
     color: var(--dim);
     margin-top: 2px;
   }

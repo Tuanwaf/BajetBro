@@ -14,6 +14,14 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  server: {
+    // Personal backup JSON and source images sit in the project root (see
+    // .gitignore) but aren't part of the app -- watching them trips
+    // OneDrive's placeholder/sync locking and crashes Vite's native
+    // fs.watch. Mirrors the "Personal financial data" and "Source data
+    // images" sections of .gitignore.
+    watch: { ignored: ['**/bajetbro-*.json', '**/*.jpg', '**/*.jpeg', '**/*.png'] },
+  },
   plugins: [
     svelte(),
     VitePWA({

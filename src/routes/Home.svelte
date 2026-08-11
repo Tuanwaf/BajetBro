@@ -1,23 +1,19 @@
 <script>
-  import { currentMonth, loans, userName } from '../lib/stores.js';
+  import { currentMonth, userName } from '../lib/stores.js';
   import {
-    computeBufferPlanned,
     computeBufferActual,
-    computeSpentTotal,
-    computeTotalRemaining,
-    computeTotalBalance,
-    computePlannedTotal,
+    computeBankFreeTotal,
+    computeBufferPlannedLive,
+    computePlannedTotalLive,
     computeReimbursedTotal,
     round2,
   } from '../lib/calc.js';
-  import { fmt } from '../lib/format.js';
+  import { fmt, formatDate } from '../lib/format.js';
   import { BUFFER_COLOR } from '../lib/constants.js';
-  import { currentView } from '../lib/viewStore.js';
   import db from '../lib/db.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
   import BufferDetailSheet from './BufferDetailSheet.svelte';
   import ReimbursementsSheet from './ReimbursementsSheet.svelte';
-  import LoanLogSheet from './LoanLogSheet.svelte';
   import BankCarousel from '../lib/components/BankCarousel.svelte';
   import BankTransactionsSheet from './BankTransactionsSheet.svelte';
   import { banks as bankPreviewStore, focusedBankIndex } from '../lib/bankPreviewStore.js';
@@ -38,12 +34,16 @@
   let bankTxnSheetOpen = $state(false);
 
   let year = $derived(month ? month.key.split('-')[0] : '');
-  let bufferPlanned = $derived(month ? computeBufferPlanned(month) : 0);
+  // The real, live "how much do I actually have" figure -- summed straight
+  // from every bank's free-to-spend money, not the old single-pool
+  // startingBalance chain (see computeBankFreeTotal's comment in calc.js).
+  // Buffer/Commitments both anchor on this now, so a Transfer or a goal
+  // contribution/withdrawal shows up in them immediately instead of
+  // silently drifting away from reality.
+  let liveTotal = $derived(computeBankFreeTotal(bankPreview));
+  let bufferPlanned = $derived(month ? computeBufferPlannedLive(month, liveTotal) : 0);
   let bufferActual = $derived(month ? computeBufferActual(month) : 0);
-  let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
-  let totalRemaining = $derived(month ? computeTotalRemaining(month) : 0);
-  let totalBalance = $derived(month ? computeTotalBalance(month) : null);
-  let plannedTotal = $derived(month ? computePlannedTotal(month) : 0);
+  let plannedTotal = $derived(month ? computePlannedTotalLive(month, liveTotal) : 0);
   let reimbursedTotal = $derived(month ? computeReimbursedTotal(month) : 0);
   let reimburseOpen = $state(false);
 
@@ -60,13 +60,15 @@
   let detailCategoryKey = $state(null);
   let detailCategory = $derived(detailCategoryKey ? month?.categories.find((c) => c.key === detailCategoryKey) : null);
 
-  // Loan log: purely a manual record of who owes who, kept entirely separate
-  // from budget/expense calculations -- shown split (never netted together)
-  // per the user's preference.
-  let loanList = $derived($loans ?? []);
-  let loanLent = $derived(round2(loanList.filter((l) => l.direction === 'lent').reduce((s, l) => s + l.amount, 0)));
-  let loanOwed = $derived(round2(loanList.filter((l) => l.direction === 'borrowed').reduce((s, l) => s + l.amount, 0)));
-  let loanLogOpen = $state(false);
+  // Whichever of these four .sheet-page screens (see app.css) is open,
+  // Home's own real content needs to be display:none rather than just
+  // visually covered -- these now share the root document scroll instead
+  // of being position:fixed overlays with their own scroller.
+  let anySheetOpen = $derived(detailCategoryKey != null || bufferLabel != null || reimburseOpen || bankTxnSheetOpen);
+  $effect(() => {
+    anySheetOpen;
+    window.scrollTo(0, 0);
+  });
 
   function rowInfo(cat) {
     const pct = cat.planned > 0 ? Math.min(100, Math.round((cat.actual / cat.planned) * 100)) : cat.actual > 0 ? 100 : 0;
@@ -87,12 +89,14 @@
   }
 </script>
 
-<h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
-  <p class="sub">{month.label} {year}</p>
+<div style:display={anySheetOpen ? 'none' : 'contents'}>
+<div class="greet-row">
+  <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
+  <span class="pill gold cycle-pill">{month.label} {year}</span>
+</div>
 
   {#if activeBank}
-    <div class="section-hd" data-guide="balance-remaining"><h3>Your banks</h3></div>
-    <div data-guide="balance-stats">
+    <div data-guide="balance-remaining balance-stats">
       <BankCarousel banks={bankPreview} activeIndex={activeBankIndex} onNavigate={(i) => focusedBankIndex.set(i)} />
     </div>
 
@@ -109,9 +113,9 @@
           <span class="dot" style="background:{t.color}"></span>
           <div class="recent-txn-body">
             <span class="recent-txn-note">{t.note}</span>
-            <span class="recent-txn-date">{t.date}</span>
+            <span class="recent-txn-date">{formatDate(t.date)}</span>
           </div>
-          <span class="recent-txn-amt" style="color:{t.income ? 'var(--good)' : 'var(--hi)'};">{t.income ? '+' : '−'}RM {fmt(t.amount)}</span>
+          <span class="recent-txn-amt" style="color:{t.income ? 'var(--good)' : 'var(--red)'};">{t.income ? '+' : '−'}RM {fmt(t.amount)}</span>
         </div>
       {:else}
         <p class="hint" style="margin:2px 0;">No transactions yet on this bank.</p>
@@ -124,26 +128,6 @@
       <span>Paid back to you</span>
       <span class="pb-meta">+RM {fmt(reimbursedTotal)}<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     </button>
-  {/if}
-
-  {#if false}
-    <!-- Loan log -- disabled while we decide whether it still belongs here
-         once multi-bank lands (2026-08-07, feature/multi-bank). -->
-    <div class="card" data-guide="loan-log-card" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; cursor:pointer;" onclick={() => (loanLogOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (loanLogOpen = true)}>
-      <div>
-        <div style="font-size:11.5px; color:var(--lo); font-weight:600;">Loan log</div>
-        {#if loanList.length}
-          <div style="display:flex; gap:14px; margin-top:2px;">
-            <div><span class="num" style="font-size:17px; font-weight:700; color:var(--good);">RM {fmt(loanLent)}</span><div style="font-size:10.5px; color:var(--dim);">you lent</div></div>
-            <div><span class="num" style="font-size:17px; font-weight:700; color:var(--red);">RM {fmt(loanOwed)}</span><div style="font-size:10.5px; color:var(--dim);">you owe</div></div>
-          </div>
-        {:else}
-          <div class="num" style="font-size:19px; font-weight:700; margin-top:2px; color:var(--dim);">No loans logged</div>
-        {/if}
-        <div style="font-size:11px; color:var(--dim); margin-top:6px;">Manual record — doesn't affect your balance</div>
-      </div>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="color:var(--dim); flex-shrink:0;"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </div>
   {/if}
 
   <div class="section-hd" data-guide="commitments-section">
@@ -166,8 +150,6 @@
             <span class="cat-note" style="color:var(--gold);">
               Locked · {leftover >= 0 ? `RM ${fmt(leftover)} sent to Buffer` : `RM ${fmt(Math.abs(leftover))} pulled from Buffer`}
             </span>
-          {:else if cat.key === 'saving'}
-            <span class="cat-note link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('goals'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>Feeds your Goals pool &rarr;</span>
           {:else}
             <span class="cat-note" class:over={info.over} class:under={!info.over}>
               {info.over ? `Over by RM ${fmt(cat.actual - cat.planned)}` : `RM ${fmt(cat.planned - cat.actual)} left`}
@@ -212,14 +194,29 @@
     <svg viewBox="0 0 24 24" fill="none"><path d="M5 21V4M5 4h11l-2 4 2 4H5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
     End {month.label} &amp; start next month
   </button>
+</div>
 
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
 <BufferDetailSheet open={bufferLabel != null} label={bufferLabel} onClose={() => (bufferLabel = null)} />
 <ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
-<LoanLogSheet open={loanLogOpen} onClose={() => (loanLogOpen = false)} />
 <BankTransactionsSheet open={bankTxnSheetOpen} bank={activeBank?.bank} transactions={activeBank?.transactions ?? []} onClose={() => (bankTxnSheetOpen = false)} />
 
 <style>
+  .greet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 14px 0 16px;
+  }
+  .greet-row h2.title { margin: 0; }
+  .cycle-pill {
+    flex-shrink: 0;
+    white-space: nowrap;
+    border: none;
+    font-weight: 800;
+    padding: 8px 12px;
+  }
   .see-all-btn {
     display: flex;
     align-items: center;

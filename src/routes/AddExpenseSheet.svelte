@@ -1,13 +1,21 @@
 <script>
-  import { currentMonth, template, hutangPots, goals } from '../lib/stores.js';
-  import { goalAllocated, goalReserveLeft, goalReached } from '../lib/calc.js';
+  import { currentMonth, template, goals } from '../lib/stores.js';
+  import { goalAllocated, goalReserveLeft, goalReserveByBank, goalReached, spendRM, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
-  import { currentView } from '../lib/viewStore.js';
+  import { currentView, openSheetCount } from '../lib/viewStore.js';
+  import { banks as bankPreviewStore, adjustBankBalance, computeBankReserved, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
+  import BankIcon from '../lib/components/BankIcon.svelte';
 
   let { open, onClose, intent = null, originRect = null } = $props();
+
+  $effect(() => {
+    if (!open) return;
+    openSheetCount.update((n) => n + 1);
+    return () => openSheetCount.update((n) => n - 1);
+  });
 
   // iOS-style "grow from the FAB, shrink back into it" morph. `openClass` (not
   // the `open` prop directly) drives the sheet's own open/closed CSS class --
@@ -273,40 +281,161 @@
 
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
-  let pots = $derived($hutangPots ?? []);
   let goalList = $derived(($goals ?? []).filter((g) => !g.closed));
   // Editable from Settings -> Buffer labels; falls back to the built-in
   // defaults for templates created before that field existed.
   let bufferLabels = $derived(tmpl?.bufferLabels ?? BUFFER_LABEL_PRESETS);
+  let banksList = $derived($bankPreviewStore);
 
-  // 'addgoal' = put money into a goal (reserve / give), 'spendgoal' = itemized
-  // spend out of a savings goal, 'spend' = personal spend from the pool.
+  // 'expense' (default) is everything that already existed -- fixed
+  // categories, Buffer, goals, "paid back to me". 'income' is new money
+  // entering this cycle (freelance, gift, refund) -- it replaces Settings'
+  // old standalone "Additional income" card. 'transfer' moves your own
+  // money between two of your own banks -- not spending, not income, just
+  // relocating (see bankPreviewStore.js's computeBankActivity, which
+  // deliberately excludes transfers from the spending/income stats).
+  let addMode = $state('expense');
+
+  // 'addgoal' = put money into a goal, 'spendgoal' = itemized spend out of
+  // a goal's own reserve.
   let selectedCatKey = $state(null);
+  // Category is a dropdown, not a chip-grid -- it was the single biggest
+  // contributor to this screen's height (every fixed category plus the 4
+  // special entries, wrapping across several rows), and a shorter screen is
+  // less likely to actually need scrolling, which is the precondition for
+  // the keyboard/scroll freeze bug (see FAB_KEYBOARD_SCROLL_BUG.md). The
+  // open list is position:absolute within a position:relative wrapper, so
+  // it overlays whatever's below instead of pushing it down -- closed, it's
+  // not there at all, so it costs nothing when collapsed either.
+  let categoryDropdownOpen = $state(false);
+  let categoryOptions = $derived([
+    ...(tmpl?.categories ?? []).map((c) => ({ key: c.key, name: c.name, color: c.color })),
+    { key: 'buffer', name: 'Buffer', color: BUFFER_COLOR },
+    { key: 'addgoal', name: 'Add to a goal', color: '#b07af2' },
+    { key: 'spendgoal', name: 'Spend on a goal', color: '#3ddcb0' },
+    { key: 'reimburse', name: 'Paid back to me', color: 'var(--good)' },
+  ]);
+  let selectedCategoryOption = $derived(categoryOptions.find((o) => o.key === selectedCatKey) ?? null);
   let selectedBufferLabel = $state(null);
   let customBufferLabel = $state('');
   let selectedGoalId = $state(null);
+  let selectedBankId = $state(null);
+  // Transfer's destination, or addgoal's "hold it in a different bank"
+  // destination -- see heldInChoice below.
+  let secondBankId = $state(null);
+  // Where an "Add to a goal" contribution actually ends up: 'same' (default
+  // -- it just stays in whichever bank it came from, earmarked in place),
+  // 'other' (physically moved into a different bank, picked via
+  // secondBankId, in this same single action), or 'given' (money leaves for
+  // good -- given away, nothing left to reserve or spend later).
+  let heldInChoice = $state('same');
   let addCcy = $state('RM');
   let kpCents = $state(0);
   let noteValue = $state('');
+
+  // Which entries need a "Paid from" bank picker -- every expense-mode
+  // category now moves real money through a bank, including goal
+  // contributions/spends (see the redesign: a goal's `type` no longer
+  // decides this -- whether money is reserved or given away is now a
+  // per-contribution choice, see heldInChoice above).
+  let showBankPicker = $derived(!!selectedCatKey);
 
   const MAX_CENTS = 99999999;
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
   let step = $state(1); // 1 = amount, 2 = category + note
 
   let selectedGoal = $derived(goalList.find((g) => g.id === selectedGoalId) || null);
-  // Goals eligible for a "spend on a goal" entry: savings goals with reserve left.
-  let spendGoals = $derived(goalList.filter((g) => g.type === 'savings' && goalReserveLeft(g) > 0.005));
+  // Goals eligible for a "spend on a goal" entry: any goal that actually
+  // still has reserve left, regardless of how that reserve came to be.
+  let spendGoals = $derived(goalList.filter((g) => goalReserveLeft(g) > 0.005));
   let amtCur = $derived(selectedCatKey === 'spendgoal' && selectedGoal?.currency ? addCcy : 'RM');
 
+  // Which bank(s) actually hold this goal's reserve -- spending has to come
+  // from one of these, never an arbitrary bank (picking the wrong one would
+  // debit a bank that never held the money, while the goal's own numbers
+  // stayed the same either way). Empty means old, pre-bank-tagging reserve
+  // that can't be attributed -- only then does the picker fall back to the
+  // full bank list, since there's nothing better to restrict it to.
+  let spendGoalBanks = $derived(selectedCatKey === 'spendgoal' && selectedGoal ? goalReserveByBank(selectedGoal) : []);
+  let spendGoalBankOptions = $derived(
+    spendGoalBanks.length ? banksList.filter((b) => spendGoalBanks.some((x) => x.bankId === b.bank.id)) : banksList
+  );
+
+  // Banks selectable as a transfer's/goal-hold's "second" destination --
+  // excludes whichever bank is already picked as the source, since picking
+  // the same one there would be a no-op that's just confusing to offer.
+  let otherBanksList = $derived(banksList.filter((b) => b.bank.id !== selectedBankId));
+
+  // A plain expense/buffer entry has no idea a bank has money earmarked for
+  // a goal -- it'll happily debit straight through it. Rather than block
+  // that (sometimes you really do need to dip in), save() warns once per
+  // distinct (bank, amount) combo and waits for a second tap before it
+  // actually goes through. Keyed by signature rather than a plain boolean
+  // so changing the amount or bank after seeing the warning re-checks fresh
+  // instead of silently reusing a stale confirmation.
+  //
+  // Two different things can make a bank's real balance not all be free to
+  // spend: money earmarked for a goal (soft, reversible -- see
+  // reconcileGoalReserve, which independently re-derives exactly how much of
+  // THAT to pull back whenever this entry is later edited/deleted) and a
+  // fixed deposit (a static, non-reversible number set on the bank itself --
+  // nothing to give back later, since it never actually gets "consumed").
+  // Both count toward the same protection threshold here, worded separately
+  // so the warning says which one(s) are actually in play.
+  let overspendMsg = $state('');
+  let overspendPendingSig = '';
+  let overspendConfirmedFor = '';
+  function checkReserveOverspend(bankId, amt, goals) {
+    if (!bankId) return { ok: true };
+    const sig = `${bankId}:${amt}`;
+    const bank = banksList.find((b) => b.bank.id === bankId);
+    if (!bank) return { ok: true };
+    const reserved = computeBankReserved(goals, bankId);
+    const fixedDeposit = bank.fixedDeposit || 0;
+    const protectedAmt = round2(reserved + fixedDeposit);
+    if (protectedAmt <= 0.005) return { ok: true };
+    const balanceAfter = round2(bank.balance - amt);
+    if (balanceAfter >= protectedAmt - 0.005) return { ok: true };
+    if (overspendConfirmedFor === sig) return { ok: true };
+    const eaten = round2(Math.min(protectedAmt, protectedAmt - balanceAfter));
+    const parts = [];
+    if (reserved > 0.005) parts.push(`RM ${fmt(reserved)} reserved for your goals`);
+    if (fixedDeposit > 0.005) parts.push(`RM ${fmt(fixedDeposit)} locked as a fixed deposit`);
+    overspendMsg = `This leaves RM ${fmt(balanceAfter)} in ${bank.bank.name}, but ${parts.join(' and ')} there — RM ${fmt(eaten)} of it would be spent.`;
+    overspendPendingSig = sig;
+    return { ok: false };
+  }
+  function confirmOverspend() {
+    overspendConfirmedFor = overspendPendingSig;
+    overspendMsg = '';
+    save();
+  }
+  // The actual consumption (and its later reversal on edit/delete) lives in
+  // bankPreviewStore.js's reconcileGoalReserve -- shared with CategoryDetail/
+  // BufferDetailSheet and BankTransactionsSheet's edit/delete, all of which
+  // can dip into or give back the same reserve later. `eaten` above is only
+  // this warning's own preview number; reconcileGoalReserve re-derives the
+  // real amount independently once the debit has actually landed.
+
   function reset() {
+    addMode = 'expense';
     selectedCatKey = null;
+    categoryDropdownOpen = false;
     selectedBufferLabel = null;
     customBufferLabel = '';
     selectedGoalId = null;
+    // Defaults to the main bank -- most entries are through it, and this
+    // stays fixed for the rest of the session even if the Home carousel
+    // gets swiped elsewhere in the meantime.
+    selectedBankId = banksList.find((b) => b.bank.isMain)?.bank.id ?? banksList[0]?.bank.id ?? null;
+    secondBankId = null;
+    heldInChoice = 'same';
     addCcy = 'RM';
     kpCents = 0;
     noteValue = '';
     step = 1;
+    overspendMsg = '';
+    overspendConfirmedFor = '';
   }
 
   $effect(() => {
@@ -329,6 +458,10 @@
         // the plain `it.mode` argument instead avoids the read-your-own-write.
         selectedGoalId = g.id;
         addCcy = it.mode === 'spendgoal' && g.currency ? g.currency : 'RM';
+        if (it.mode === 'spendgoal') {
+          const bankId = defaultSpendBank(g);
+          if (bankId) selectedBankId = bankId;
+        }
       }
     }
     // Coming from a Goals-page button, the goal/mode is already chosen -- jump
@@ -376,11 +509,27 @@
     );
   }
 
+  // Spending on a goal must come from wherever its reserve actually sits --
+  // prefer the most recently held-in bank among those that still have some
+  // left; the picker only offers a real choice when the reserve is split
+  // across more than one bank. Shared by selectGoal() and applyIntent() --
+  // the latter can't just call selectGoal() (see its own comment).
+  function defaultSpendBank(g) {
+    const byBank = goalReserveByBank(g);
+    if (!byBank.length) return null;
+    const lastHeldIn = [...(g.allocations || [])]
+      .reverse()
+      .find((a) => a.heldInBankId && byBank.some((x) => x.bankId === a.heldInBankId))?.heldInBankId;
+    return lastHeldIn ?? byBank[0].bankId;
+  }
+
   function selectCat(key) {
     selectedCatKey = key;
     selectedBufferLabel = null;
     customBufferLabel = '';
     selectedGoalId = null;
+    secondBankId = null;
+    heldInChoice = 'same';
     addCcy = 'RM';
   }
 
@@ -389,24 +538,99 @@
     // Default a foreign-currency goal to its own currency (most trip spends
     // are local); flip to RM for ringgit-priced things like a flight.
     addCcy = selectedCatKey === 'spendgoal' && g.currency ? g.currency : 'RM';
+    if (selectedCatKey === 'spendgoal') {
+      const bankId = defaultSpendBank(g);
+      if (bankId) selectedBankId = bankId;
+    }
   }
 
   async function save() {
     const amt = kpCents / 100;
-    if (!selectedCatKey || !amt) {
-      showToast('Pick a category and amount first');
+    if (!amt) {
+      showToast('Enter an amount first');
       return;
     }
+    // Snapshot every reactive field this function needs into plain locals
+    // BEFORE any `await` below -- re-reading the $state vars themselves
+    // after an await is not safe here. This sheet's own open-effect calls
+    // reset()/applyIntent(), which read banksList/goalList; the very
+    // db.months/db.goals writes below cascade back through those derived
+    // stores (bankPreviewStore.js's merged `banks` depends on currentMonth,
+    // goalList depends on the goals table), re-triggering that effect mid-
+    // save and resetting these fields back to their defaults -- e.g. a
+    // category expense tagged to a second bank was silently being debited
+    // from the MAIN bank instead, because by the time adjustBankBalance ran,
+    // reset() had already zeroed selectedBankId back to it.
+    const mode = addMode;
+    const catKey = selectedCatKey;
+    const bankId = selectedBankId;
+    const secondBank = secondBankId;
+    const heldIn = heldInChoice;
     const note = noteValue.trim();
     const now = new Date().toISOString();
+    const bufferLabelChoice = selectedBufferLabel;
+    const bufferLabelCustom = customBufferLabel.trim();
+    const goals = goalList;
+    const goal = goals.find((g) => g.id === selectedGoalId) || null;
+    const ccy = addCcy;
 
-    if (selectedCatKey === 'buffer') {
-      const label = selectedBufferLabel === 'custom' ? customBufferLabel.trim() || 'Misc' : selectedBufferLabel || 'Misc';
-      const extras = [...(month.extras || []), { name: label, actual: amt, date: now, note: note || undefined }];
+    if (mode === 'transfer') {
+      if (!bankId || !secondBank || bankId === secondBank) return showToast('Pick two different banks first');
+      const transfers = [...(month.transfers || []), { date: now, amount: amt, fromBankId: bankId, toBankId: secondBank, note: note || undefined }];
+      await db.months.update(month.key, { transfers });
+      await adjustBankBalance(bankId, -amt);
+      await adjustBankBalance(secondBank, amt);
+      const toBankName = banksList.find((b) => b.bank.id === secondBank)?.bank.name ?? '';
+      showToast(`Moved RM ${fmt(amt)} to ${toBankName}`);
+      onClose();
+      currentView.set('home');
+      return;
+    }
+
+    if (mode === 'income') {
+      if (!bankId) return showToast('Pick a bank first');
+      // Same shape Settings' old "Additional income" card used -- a fresh
+      // install with a pre-existing plain total (from before this per-entry
+      // log existed) gets that folded in as one synthetic legacy entry, so
+      // nothing gets silently double-counted or dropped.
+      const baseLog = month.additionalIncomeLog?.length
+        ? month.additionalIncomeLog
+        : month.additionalIncome > 0
+          ? [{ date: month.startedAt || null, amount: month.additionalIncome, legacy: true }]
+          : [];
+      const log = [...baseLog, { date: now, amount: amt, note: note || undefined, bankId }];
+      const total = round2(log.reduce((s, e) => s + (e.amount || 0), 0));
+      await db.months.update(month.key, { additionalIncomeLog: log, additionalIncome: total });
+      await adjustBankBalance(bankId, amt);
+      showToast(`Saved RM ${fmt(amt)} · Income`);
+      onClose();
+      currentView.set('home');
+      return;
+    }
+
+    if (!catKey) {
+      showToast('Pick a category first');
+      return;
+    }
+
+    if (catKey === 'buffer') {
+      const overspend = checkReserveOverspend(bankId, amt, goals);
+      if (!overspend.ok) return;
+      const label = bufferLabelChoice === 'custom' ? bufferLabelCustom || 'Misc' : bufferLabelChoice || 'Misc';
+      const newExtra = { name: label, actual: amt, date: now, note: note || undefined, bankId: bankId || undefined };
+      let extras = [...(month.extras || []), newExtra];
       await db.months.update(month.key, { extras });
+      if (bankId) await adjustBankBalance(bankId, -amt);
+      if (bankId) {
+        const consumption = await reconcileGoalReserve(bankId, []);
+        if (consumption.length) {
+          extras = extras.map((e) => (e === newExtra ? { ...e, reserveConsumption: consumption } : e));
+          await db.months.update(month.key, { extras });
+        }
+      }
       // A new custom label becomes a permanent quick-pick chip (and shows up
       // in Settings), same as if it had been added there directly.
-      if (selectedBufferLabel === 'custom' && label && !bufferLabels.includes(label)) {
+      if (bufferLabelChoice === 'custom' && label && !bufferLabels.includes(label)) {
         await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, label] });
       }
       showToast(`Saved RM ${fmt(amt)} · Buffer / ${label}`);
@@ -415,41 +639,58 @@
       return;
     }
 
-    if (selectedCatKey === 'addgoal') {
-      if (!selectedGoal) return showToast('Pick a goal first');
-      const room = Math.max(0, selectedGoal.target - goalAllocated(selectedGoal));
+    if (catKey === 'addgoal') {
+      if (!goal) return showToast('Pick a goal first');
+      if (!bankId) return showToast('Pick a bank first');
+      // heldIn === 'given': money leaves for good, nothing reserved.
+      // heldIn === 'same': stays exactly where it already was -- earmarked
+      // in place, no bank actually debited (see below).
+      // heldIn === 'other': physically moved into secondBank, reserved there.
+      const heldInBankId = heldIn === 'given' ? null : heldIn === 'other' ? secondBank : bankId;
+      if (heldIn === 'other' && !secondBank) return showToast('Pick which bank to hold it in');
+      const room = Math.max(0, goal.target - goalAllocated(goal));
       const applied = Math.min(amt, room);
       if (applied <= 0) return showToast('This goal is already at its target');
-      const allocations = [...(selectedGoal.allocations || []), { date: now, amount: applied }];
-      await db.goals.update(selectedGoal.id, { allocations });
-      const verb = selectedGoal.type === 'giving' ? 'Added to' : 'Reserved for';
-      showToast(`${verb} ${selectedGoal.label} · RM ${fmt(applied)}${applied < amt ? ' (capped to target)' : ''}`);
+      const allocations = [...(goal.allocations || []), { date: now, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId: heldInBankId ?? undefined }];
+      await db.goals.update(goal.id, { allocations });
+      // heldInBankId === bankId ("same"): the debit and credit would be the
+      // exact same bank canceling out, so skip both writes entirely --
+      // nothing actually moved, it's purely a label on money already there.
+      if (heldInBankId == null) {
+        await adjustBankBalance(bankId, -applied);
+      } else if (heldInBankId !== bankId) {
+        await adjustBankBalance(bankId, -applied);
+        await adjustBankBalance(heldInBankId, applied);
+      }
+      const verb = heldInBankId == null ? 'Given to' : 'Reserved for';
+      showToast(`${verb} ${goal.label} · RM ${fmt(applied)}${applied < amt ? ' (capped to target)' : ''}`);
       onClose();
       currentView.set('goals');
       return;
     }
 
-    if (selectedCatKey === 'spendgoal') {
-      if (!selectedGoal) return showToast('Pick a goal first');
-      const spends = [...(selectedGoal.spends || []), { date: now, label: note || 'Spend', amount: amt, ccy: addCcy }];
-      await db.goals.update(selectedGoal.id, { spends });
-      showToast(`Spent ${amtCur} ${fmt(amt)} · ${selectedGoal.label}`);
+    if (catKey === 'spendgoal') {
+      if (!goal) return showToast('Pick a goal first');
+      if (!bankId) return showToast('Pick a bank first');
+      // Spends are always logged in the goal's own currency (ccy), but a
+      // bank's balance -- and the goal's own reserve -- are always RM,
+      // so compare/debit in RM regardless of what currency was typed.
+      const spendInRM = spendRM(goal, { amount: amt, ccy });
+      const left = goalReserveLeft(goal);
+      if (spendInRM > left + 0.005) return showToast(`Only RM ${fmt(left)} is reserved for ${goal.label}`);
+      const spends = [...(goal.spends || []), { date: now, cycleMonth: month.key, label: note || 'Spend', amount: amt, ccy, bankId }];
+      await db.goals.update(goal.id, { spends });
+      await adjustBankBalance(bankId, -spendInRM);
+      showToast(`Spent ${ccy} ${fmt(amt)} · ${goal.label}`);
       onClose();
       currentView.set('goals');
       return;
     }
 
-    if (selectedCatKey === 'spend') {
-      await db.savingsSpends.add({ date: now, label: note || 'Personal spend', amount: amt });
-      showToast(`Spent RM ${fmt(amt)} from savings`);
-      onClose();
-      currentView.set('goals');
-      return;
-    }
-
-    if (selectedCatKey === 'reimburse') {
-      const reimbursements = [...(month.reimbursements || []), { amount: amt, date: now, note: note || undefined }];
+    if (catKey === 'reimburse') {
+      const reimbursements = [...(month.reimbursements || []), { amount: amt, date: now, note: note || undefined, bankId: bankId || undefined }];
       await db.months.update(month.key, { reimbursements });
+      if (bankId) await adjustBankBalance(bankId, amt);
       showToast(`Paid back to you · RM ${fmt(amt)}`);
       onClose();
       currentView.set('home');
@@ -457,26 +698,25 @@
     }
 
     // A fixed category expense.
-    const categories = month.categories.map((c) =>
-      c.key === selectedCatKey
-        ? {
-            ...c,
-            actual: c.actual + amt,
-            transactions: [...(c.transactions || []), { amount: amt, date: now, note: note || undefined }],
-          }
-        : c
+    const overspend = checkReserveOverspend(bankId, amt, goals);
+    if (!overspend.ok) return;
+    const newTx = { amount: amt, date: now, note: note || undefined, bankId: bankId || undefined };
+    let categories = month.categories.map((c) =>
+      c.key === catKey ? { ...c, actual: c.actual + amt, transactions: [...(c.transactions || []), newTx] } : c
     );
     await db.months.update(month.key, { categories });
-
-    // Saving is what actually feeds the shared pool: it opens/grows this
-    // month's pot (its `initial`), which flows into "Ready to allocate".
-    if (selectedCatKey === 'saving') {
-      const existingPot = pots.find((p) => p.month === month.key);
-      if (existingPot) await db.hutangPots.update(month.key, { initial: existingPot.initial + amt });
-      else await db.hutangPots.put({ month: month.key, initial: amt });
+    if (bankId) await adjustBankBalance(bankId, -amt);
+    if (bankId) {
+      const consumption = await reconcileGoalReserve(bankId, []);
+      if (consumption.length) {
+        categories = categories.map((c) =>
+          c.key === catKey ? { ...c, transactions: c.transactions.map((t) => (t === newTx ? { ...t, reserveConsumption: consumption } : t)) } : c
+        );
+        await db.months.update(month.key, { categories });
+      }
     }
 
-    const cat = tmpl.categories.find((c) => c.key === selectedCatKey);
+    const cat = tmpl.categories.find((c) => c.key === catKey);
     showToast(`Saved RM ${fmt(amt)} · ${cat?.name ?? ''}`);
     onClose();
     currentView.set('home');
@@ -500,6 +740,12 @@
         </button>
         <h2>Add entry</h2>
         <span style="width:38px;"></span>
+      </div>
+      <div class="mode-toggle">
+        <div class="mode-thumb" class:income={addMode === 'income'} class:transfer={addMode === 'transfer'}></div>
+        <button class="mode-btn" class:selected={addMode === 'expense'} onclick={() => (addMode = 'expense')}>Expense</button>
+        <button class="mode-btn income" class:selected={addMode === 'income'} onclick={() => (addMode = 'income')}>Income</button>
+        <button class="mode-btn transfer" class:selected={addMode === 'transfer'} onclick={() => (addMode = 'transfer')}>Transfer</button>
       </div>
       <div class="amt-big">
         <div class="cap">How much?</div>
@@ -535,39 +781,71 @@
         <button class="edit-amt" onclick={back}>edit</button>
       </div>
     <div class="add-scroll">
+    {#if addMode === 'expense'}
     <div class="field-lbl" style="margin-top:2px;">Category</div>
-    <div class="chip-grid">
-      {#if tmpl}
-        {#each tmpl.categories as cat (cat.key)}
-          <button class="chip" class:selected={selectedCatKey === cat.key} style="color:{cat.color}" onclick={() => selectCat(cat.key)}>
-            <span class="dot" style="background:{cat.color}"></span>{cat.name}
-          </button>
-        {/each}
+    <div class="dropdown-wrap">
+      <button class="dropdown-btn" onclick={() => (categoryDropdownOpen = !categoryDropdownOpen)}>
+        {#if selectedCategoryOption}
+          <span class="dot" style="background:{selectedCategoryOption.color}"></span>
+          <span style="flex:1;">{selectedCategoryOption.name}</span>
+        {:else}
+          <span class="placeholder">Choose a category</span>
+        {/if}
+        <svg class="chev" class:open={categoryDropdownOpen} width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      {#if categoryDropdownOpen}
+        <button class="dropdown-backdrop" aria-label="Close" onclick={() => (categoryDropdownOpen = false)}></button>
+        <div class="dropdown-list">
+          {#each categoryOptions as opt (opt.key)}
+            <button class="dropdown-item" class:selected={selectedCatKey === opt.key} onclick={() => { selectCat(opt.key); categoryDropdownOpen = false; }}>
+              <span class="dot" style="background:{opt.color}"></span>{opt.name}
+            </button>
+          {/each}
+        </div>
       {/if}
-      <button class="chip" class:selected={selectedCatKey === 'buffer'} style="color:{BUFFER_COLOR}" onclick={() => selectCat('buffer')}>
-        <span class="dot" style="background:{BUFFER_COLOR}"></span>Buffer
-      </button>
-      <button class="chip" class:selected={selectedCatKey === 'addgoal'} style="color:#b07af2" onclick={() => selectCat('addgoal')}>
-        <span class="dot" style="background:#b07af2"></span>Add to a goal
-      </button>
-      <button class="chip" class:selected={selectedCatKey === 'spendgoal'} style="color:#3ddcb0" onclick={() => selectCat('spendgoal')}>
-        <span class="dot" style="background:#3ddcb0"></span>Spend on a goal
-      </button>
-      <button class="chip" class:selected={selectedCatKey === 'spend'} style="color:#f2a154" onclick={() => selectCat('spend')}>
-        <span class="dot" style="background:#f2a154"></span>Spend from savings
-      </button>
-      <button class="chip" class:selected={selectedCatKey === 'reimburse'} style="color:var(--good)" onclick={() => selectCat('reimburse')}>
-        <span class="dot" style="background:var(--good)"></span>Paid back to me
-      </button>
     </div>
 
     {#if selectedCatKey === 'reimburse'}
       <p class="hint">Money someone paid you back — credited to <b>this month's</b> Remaining, kept separate from your income. Use this when the payback arrives in a later month than the expense (for a same-month bill split, edit the expense instead).</p>
     {/if}
 
+    {#if selectedCatKey === 'spendgoal'}
+      {#if spendGoalBankOptions.length > 1}
+        <div class="field-lbl">Spend from</div>
+        <div class="chip-scroll">
+          {#each spendGoalBankOptions as b (b.bank.id)}
+            <button class="chip" class:selected={selectedBankId === b.bank.id} onclick={() => (selectedBankId = b.bank.id)}>
+              <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+              {b.bank.name}
+            </button>
+          {/each}
+        </div>
+      {:else if spendGoalBankOptions.length === 1}
+        {@const only = spendGoalBankOptions[0]}
+        <div class="field-lbl">Spend from</div>
+        <div class="locked-bank-row">
+          <BankIcon logo={only.bank.logo} icon={only.bank.icon} name={only.bank.name} color={only.bank.color} size={18} />
+          <span class="name">{only.bank.name}</span>
+          <span class="lo">only bank still holding this goal's reserve</span>
+        </div>
+      {/if}
+    {:else if showBankPicker && banksList.length}
+      <div class="field-lbl">{selectedCatKey === 'reimburse' ? 'Credited to' : 'Paid from'}</div>
+      <div class="chip-scroll">
+        {#each banksList as b (b.bank.id)}
+          <button class="chip" class:selected={selectedBankId === b.bank.id} onclick={() => (selectedBankId = b.bank.id)}>
+            <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+            {b.bank.name}
+          </button>
+        {/each}
+      </div>
+    {/if}
+
     {#if selectedCatKey === 'buffer'}
       <div class="field-lbl">Buffer label</div>
-      <div class="chip-grid">
+      <!-- chip-scroll (one row), not chip-grid -- same compaction as
+           "Where does this go?"/"Which goal?" above. -->
+      <div class="chip-scroll">
         {#each bufferLabels as label}
           <button class="chip ghost" class:selected={selectedBufferLabel === label} style={selectedBufferLabel === label ? `color:${BUFFER_COLOR}` : ''} onclick={() => (selectedBufferLabel = label)}>{label}</button>
         {/each}
@@ -580,7 +858,11 @@
 
     {#if selectedCatKey === 'addgoal' || selectedCatKey === 'spendgoal'}
       <div class="field-lbl">{selectedCatKey === 'spendgoal' ? 'Spend from which goal?' : 'Which goal?'}</div>
-      <div class="chip-grid">
+      <!-- chip-scroll (one row), not chip-grid -- same reasoning as
+           "Where does this go?" above: compacts this vertically so the
+           addgoal/spendgoal screen is less likely to actually need to
+           scroll, which is the precondition for the keyboard freeze bug. -->
+      <div class="chip-scroll">
         {#each (selectedCatKey === 'addgoal' ? goalList : spendGoals) as g (g.id)}
           <button class="chip ghost" class:selected={selectedGoalId === g.id} style={selectedGoalId === g.id ? `color:${g.color}` : ''} onclick={() => selectGoal(g)}>
             <span class="dot" style="background:{g.color}"></span>{g.label}
@@ -593,9 +875,34 @@
       </div>
 
       {#if selectedCatKey === 'addgoal' && selectedGoal}
+        <div class="field-lbl">Where does this go?</div>
+        <!-- chip-scroll (one row), not chip-grid -- this is the tallest
+             .add-scroll gets (addgoal + "Move to another bank" adds a
+             second chip-scroll row plus explanatory hint text below), and
+             the keyboard/scroll freeze bug only shows up when this content
+             is actually scrollable. Compacting this one row buys headroom
+             without touching .add-sheet's position:fixed architecture. -->
+        <div class="chip-scroll">
+          <button class="chip ghost" class:selected={heldInChoice === 'same'} style={heldInChoice === 'same' ? 'color:#b07af2' : ''} onclick={() => (heldInChoice = 'same')}>Stays in this bank</button>
+          <button class="chip ghost" class:selected={heldInChoice === 'other'} style={heldInChoice === 'other' ? 'color:#b07af2' : ''} onclick={() => (heldInChoice = 'other')}>Move to another bank</button>
+          <button class="chip ghost" class:selected={heldInChoice === 'given'} style={heldInChoice === 'given' ? 'color:#b07af2' : ''} onclick={() => (heldInChoice = 'given')}>Given away (not tracked)</button>
+        </div>
+        {#if heldInChoice === 'other'}
+          <div class="chip-scroll">
+            {#each otherBanksList as b (b.bank.id)}
+              <button class="chip" class:selected={secondBankId === b.bank.id} onclick={() => (secondBankId = b.bank.id)}>
+                <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+                {b.bank.name}
+              </button>
+            {:else}
+              <p class="hint" style="margin:0 0 6px;">Add another bank first to move this into it.</p>
+            {/each}
+          </div>
+        {/if}
         <p class="hint">
-          {#if selectedGoal.type === 'giving'}Goes toward {selectedGoal.label} — leaves your savings for good.
-          {:else}Reserved in Tabung Haji for {selectedGoal.label} — still yours and still growing until you spend it.{/if}
+          {#if heldInChoice === 'given'}Leaves your accounts for good — nothing left to spend or track later.
+          {:else if heldInChoice === 'other'}Moves out of the bank above and stays reserved in {otherBanksList.find((b) => b.bank.id === secondBankId)?.bank.name ?? 'the bank you pick'} for {selectedGoal.label}, spendable later.
+          {:else}Stays exactly where it is — just earmarked for {selectedGoal.label} so you know it's spoken for. Spendable later.{/if}
         </p>
       {/if}
 
@@ -607,21 +914,70 @@
             <button class="chip ghost" class:selected={addCcy === selectedGoal.currency} style={addCcy === selectedGoal.currency ? 'color:#3ddcb0' : ''} onclick={() => (addCcy = selectedGoal.currency)}>{selectedGoal.currency} (RM{fmt(selectedGoal.rate)}/1)</button>
           </div>
         {/if}
-        <p class="hint">Comes out of money set aside for {selectedGoal.label} — it won't touch this month's budget or History.</p>
+        <p class="hint">Comes out of money set aside for {selectedGoal.label} — it won't touch this month's Commitments.</p>
       {/if}
     {/if}
-
-    {#if selectedCatKey === 'spend'}
-      <p class="hint">Takes money out of your savings pool for a personal purchase — not tied to any goal, and reduces what's available to allocate.</p>
+    {:else if addMode === 'income'}
+    <p class="hint" style="margin:2px 0 14px;">New money this cycle — freelance, a gift, a refund. Counts toward Income and Buffer, same as a bonus would (unlike "Paid back to me", which only tops up Remaining).</p>
+    {#if banksList.length}
+      <div class="field-lbl" style="margin-top:0;">Credited to</div>
+      <div class="chip-scroll">
+        {#each banksList as b (b.bank.id)}
+          <button class="chip" class:selected={selectedBankId === b.bank.id} onclick={() => (selectedBankId = b.bank.id)}>
+            <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+            {b.bank.name}
+          </button>
+        {/each}
+      </div>
+    {/if}
+    {:else}
+    <p class="hint" style="margin:2px 0 14px;">Move your own money between two of your own banks — not spending, just relocating. Doesn't count toward Income, Spending, or the daily chart.</p>
+    {#if banksList.length}
+      <div class="field-lbl" style="margin-top:0;">From</div>
+      <div class="chip-scroll">
+        {#each banksList as b (b.bank.id)}
+          <button class="chip" class:selected={selectedBankId === b.bank.id} onclick={() => { selectedBankId = b.bank.id; if (secondBankId === b.bank.id) secondBankId = null; }}>
+            <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+            {b.bank.name}
+          </button>
+        {/each}
+      </div>
+      <div class="field-lbl">To</div>
+      <div class="chip-scroll">
+        {#each otherBanksList as b (b.bank.id)}
+          <button class="chip" class:selected={secondBankId === b.bank.id} onclick={() => (secondBankId = b.bank.id)}>
+            <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+            {b.bank.name}
+          </button>
+        {:else}
+          <p class="hint" style="margin:0 0 6px;">Add another bank first to transfer between them.</p>
+        {/each}
+      </div>
+    {/if}
     {/if}
 
     <div class="field-lbl">Note (optional)</div>
-    <input class="note-input" placeholder="e.g. Deposit, top-up, refund…" bind:value={noteValue} />
-    </div>
+    <input class="note-input" placeholder={addMode === 'income' ? 'e.g. Freelance gig, gift, refund' : 'e.g. Deposit, top-up, refund…'} bind:value={noteValue} />
 
-      <div class="save-wrap">
-        <button class="save-btn" disabled={!selectedCatKey} onclick={save}>Save</button>
-      </div>
+    <!-- Plain content inside .add-scroll now, not a separate fixed/sticky
+         footer -- no special positioning at all, so there's nothing for
+         iOS's keyboard-vs-fixed-position quirk to interact badly with. It
+         just scrolls into view like the note field above it. -->
+    <div class="save-wrap">
+      {#if overspendMsg}
+        <div class="overspend-warn">
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 9v4M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.3 3.9 2.6 17.5A1.6 1.6 0 0 0 4 20h16a1.6 1.6 0 0 0 1.4-2.5L13.7 3.9a1.6 1.6 0 0 0-2.8 0Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          <span>{overspendMsg}</span>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="io-btn" style="flex:1;" onclick={() => (overspendMsg = '')}>Cancel</button>
+          <button class="save-btn" style="flex:1; margin-top:0;" onclick={confirmOverspend}>Save anyway</button>
+        </div>
+      {:else}
+        <button class="save-btn" disabled={addMode === 'income' ? !selectedBankId : addMode === 'transfer' ? (!selectedBankId || !secondBankId) : !selectedCatKey} onclick={save}>Save</button>
+      {/if}
+    </div>
+    </div>
     </div>
 
   </div>
@@ -639,7 +995,10 @@
      it, WebKit only promotes the element to a layer reactively once the
      WAAPI animation starts, and that promotion/demotion transition is where
      it can glitch. Reproduced only on a real iPhone, never in desktop
-     Chromium -- same signature as that earlier bug. */
+     Chromium -- same signature as that earlier bug.
+     (2026-08-10: tried removing this to test against a separate first-
+     keyboard-open bug -- made that bug MORE frequent, not less, so
+     will-change was mitigating it, not causing it. Put back.) */
   .add-sheet { overflow: hidden; transform-origin: 0 0; will-change: transform, border-radius, background-color; }
   /* Fixed at the FAB's exact rect (set imperatively in JS -- see
      positionGhost) and NOT a descendant of .add-sheet, so its size stays
@@ -667,8 +1026,50 @@
   .add-track.step2 { transform: translateX(-50%); }
   .add-screen { width: 50%; display: flex; flex-direction: column; min-height: 0; }
 
-  /* step 1 — amount near the top, big circular iPhone-style keypad filling below */
-  .amt-big { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding: 20px 20px 4px; }
+  /* step 1 — Expense/Income segmented toggle, then amount, then the big
+     circular iPhone-style keypad filling below. Generous margin/padding
+     here specifically -- this screen previously had the toggle sitting
+     almost flush against "How much?" below it. */
+  .mode-toggle {
+    position: relative;
+    flex-shrink: 0;
+    display: flex; gap: 4px;
+    background: var(--panel); border: 2px solid var(--stroke-2); border-radius: 14px;
+    padding: 3px;
+    margin: 14px 20px 22px;
+  }
+  /* Slides between the three slots instead of the buttons just swapping
+     background color instantly -- translateX is relative to the thumb's
+     OWN width, so it lands one slot over regardless of the container's
+     exact pixel width. */
+  .mode-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: calc(33.333% - 5px);
+    height: calc(100% - 6px);
+    border-radius: 11px;
+    background: var(--gold);
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1), background-color 0.32s;
+  }
+  .mode-thumb.income {
+    transform: translateX(calc(100% + 4px));
+    background: var(--good);
+  }
+  .mode-thumb.transfer {
+    transform: translateX(calc(200% + 8px));
+    background: #6e8bff;
+  }
+  .mode-btn {
+    position: relative;
+    flex: 1; background: none; border: none; border-radius: 11px;
+    padding: 8px 0;
+    font-size: 13px; font-weight: 700; color: var(--dim);
+    transition: color 0.32s;
+  }
+  .mode-btn.selected { color: var(--accent-ink); }
+  .mode-btn.income.selected { color: #fff; }
+  .mode-btn.transfer.selected { color: #fff; }
+  .amt-big { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding: 4px 20px 8px; }
   .amt-big .cap { font-size: 12px; color: var(--lo); font-weight: 600; margin-bottom: 6px; }
   .amt-big .val { font-family: var(--mono); font-size: 46px; font-weight: 600; letter-spacing: -0.02em; }
   .amt-big .val .cur { font-size: 20px; color: var(--lo); vertical-align: 8px; margin-right: 4px; }
@@ -695,11 +1096,85 @@
   .amt-sum .edit-amt { font-size: 11px; color: var(--gold); font-weight: 700; border: 1.5px solid var(--stroke-2); border-radius: 99px; padding: 3px 10px; background: none; margin-left: 6px; }
   .add-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 10px; scrollbar-width: none; }
   .add-scroll::-webkit-scrollbar { display: none; }
+  /* Same "one swipeable line, not a wrap-to-multiple-rows grid" treatment
+     as BankFormFields.svelte's own bank-logo/design pickers -- there can be
+     more banks than comfortably fit on one screen width. */
+  .chip-scroll {
+    display: flex; gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-bottom: 6px;
+    padding: 2px 2px 4px;
+  }
+  .chip-scroll::-webkit-scrollbar { display: none; }
+  .chip-scroll .chip { flex-shrink: 0; }
+
+  /* Category dropdown -- position:relative wrapper + position:absolute list
+     means the open list overlays whatever's below (Buffer label, goal
+     picker, Note field, Save button) instead of pushing it down the page.
+     Closed, .dropdown-list isn't even in the DOM, so it costs nothing. */
+  .dropdown-wrap { position: relative; margin-bottom: 6px; }
+  .dropdown-btn {
+    width: 100%;
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px;
+    background: var(--panel); border: 2px solid var(--stroke-2); border-radius: 14px;
+    font-family: var(--body); font-size: 14px; font-weight: 600; color: var(--hi);
+    text-align: left;
+  }
+  .dropdown-btn .placeholder { flex: 1; color: var(--dim); font-weight: 500; }
+  .dropdown-btn .chev { flex-shrink: 0; color: var(--dim); transition: transform 0.2s ease; }
+  .dropdown-btn .chev.open { transform: rotate(180deg); }
+  /* Fixed, full-viewport, and BELOW .dropdown-list's own z-index -- a tap
+     anywhere outside the list closes it, same as a native dropdown/select,
+     without needing a separate outside-click listener. */
+  .dropdown-backdrop { position: fixed; inset: 0; z-index: 5; background: none; border: none; padding: 0; }
+  /* No max-height/overflow-y here on purpose -- a nested scroller inside
+     this is exactly the pattern behind the keyboard/scroll freeze bug this
+     whole redesign is trying to avoid. Long lists just extend the sheet's
+     own .add-scroll further; that's a real scroll, not a nested one. */
+  .dropdown-list {
+    position: absolute;
+    z-index: 6;
+    top: calc(100% + 6px);
+    left: 0; right: 0;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 6px;
+    background: var(--panel); border: 2px solid var(--stroke-2); border-radius: 14px;
+    box-shadow: 4px 4px 0 var(--stroke-2);
+  }
+  .dropdown-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 10px;
+    border-radius: 10px;
+    background: none; border: none;
+    font-family: var(--body); font-size: 13.5px; font-weight: 600; color: var(--hi);
+    text-align: left;
+  }
+  .dropdown-item.selected { background: var(--panel-2); }
+
+  .locked-bank-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; margin-bottom: 6px;
+    border: 1.5px solid var(--stroke); border-radius: 12px;
+    background: var(--panel-2);
+  }
+  .locked-bank-row .name { font-size: 13.5px; font-weight: 700; color: var(--hi); }
+  .locked-bank-row .lo { font-size: 11.5px; color: var(--dim); }
+  /* Plain in-flow block now, not a footer bar -- no horizontal padding of
+     its own (add-scroll already provides that), just vertical spacing plus
+     a divider line to set it apart from the note field above it. */
   .save-wrap {
-    flex-shrink: 0;
-    padding: 10px 20px calc(env(safe-area-inset-bottom, 0px) + 18px);
+    margin-top: 14px;
+    padding-top: 14px;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
     border-top: 1px solid var(--stroke);
-    background: var(--ink);
   }
   .save-btn:disabled { opacity: 0.4; }
+  .overspend-warn {
+    display: flex; align-items: flex-start; gap: 8px;
+    color: var(--gold); font-size: 12.5px; font-weight: 600; line-height: 1.4;
+    margin-bottom: 10px;
+  }
+  .overspend-warn svg { flex-shrink: 0; margin-top: 1px; }
 </style>

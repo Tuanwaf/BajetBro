@@ -4,8 +4,17 @@
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
+  import { sheetPageCount } from '../lib/viewStore.js';
 
   let { open, onClose } = $props();
+
+  // See CategoryDetailSheet.svelte's comment -- .sheet-page, registers on
+  // sheetPageCount, not openSheetCount.
+  $effect(() => {
+    if (!open) return;
+    sheetPageCount.update((n) => n + 1);
+    return () => sheetPageCount.update((n) => n - 1);
+  });
 
   let list = $derived(($loans ?? []).slice().sort((a, b) => new Date(b.date) - new Date(a.date)));
   // Purely informational -- never feeds into any budget/expense calculation.
@@ -82,15 +91,15 @@
   }
 </script>
 
-<div class="sheet" class:open>
-  <div class="sheet-hd">
+<div class="sheet-page" class:open>
+  <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
     <h2>Loan log</h2>
     <span style="width:38px;"></span>
   </div>
-  <div class="sheet-body">
+  <div class="sheet-page-body">
     <div class="loan-summary">
       <div class="card loan-stat" style="border-color:var(--good); box-shadow: 4px 4px 0 var(--good);">
         <span style="font-size:12px; color:var(--lo); font-weight:600;">Net you lent</span>

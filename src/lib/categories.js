@@ -30,7 +30,18 @@ export async function addCategory(tmpl, month, name) {
   const newCat = buildCategory(tmpl.categories, name);
   if (!newCat) return null;
   await db.template.put({ ...tmpl, categories: [...tmpl.categories, newCat] });
-  if (month) await db.months.update(month.key, { categories: [...month.categories, { ...newCat }] });
+  // buildCategory() returns a template-shaped category (no `actual` --
+  // template categories never track spend). Every month-side category
+  // needs one though, same as OnboardingFlow/EndMonthSheet always add
+  // `actual: 0` when turning a template category into a month one --
+  // skipping it here left the new category's `actual` as `undefined`,
+  // which poisoned every calc.js reduce that does arithmetic on `c.actual`
+  // (computeLiveAdjustment's `c.planned - c.actual`, computeCoreActual's
+  // `s + c.actual`, ...) into NaN for the WHOLE month, not just this one
+  // category -- and fmt()'s `Number(n) || 0` fallback silently displayed
+  // that NaN as "0.00" everywhere it flowed (Buffer, and on the live
+  // single-balance app, the account balance too).
+  if (month) await db.months.update(month.key, { categories: [...month.categories, { ...newCat, actual: 0 }] });
   return newCat;
 }
 
@@ -60,16 +71,14 @@ export async function updateCategoryPlanned(tmpl, month, index, value) {
 }
 
 // Deleting removes the category from the template and the current open
-// month (closed months keep their frozen copy). Saving is protected -- it
-// feeds the Goals pool and the savings flow, so it can never be deleted.
+// month (closed months keep their frozen copy).
 export async function deleteCategory(tmpl, month, index) {
   const cat = tmpl.categories[index];
-  if (cat.key === 'saving') return { blocked: true, name: cat.name };
   const updatedTemplate = tmpl.categories.filter((_, i) => i !== index);
   await db.template.put({ ...tmpl, categories: updatedTemplate });
   if (month) {
     const updatedMonth = month.categories.filter((c) => c.key !== cat.key);
     await db.months.update(month.key, { categories: updatedMonth });
   }
-  return { blocked: false, name: cat.name };
+  return { name: cat.name };
 }

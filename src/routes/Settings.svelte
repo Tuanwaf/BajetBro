@@ -1,6 +1,6 @@
 <script>
   import { template, currentMonth, userName } from '../lib/stores.js';
-  import { computeBufferPlanned, round2 } from '../lib/calc.js';
+  import { computeBufferPlannedLive, computeBankFreeTotal, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_LABEL_PRESETS } from '../lib/constants.js';
@@ -20,79 +20,30 @@
 
   let manageBanksOpen = $state(false);
 
+  // Manage Banks now swaps into the same root/document scroll the tabs use
+  // (see .sheet-page in app.css) instead of being its own fixed overlay
+  // with an independent scroll position -- so opening/closing it needs the
+  // same top-reset App.svelte already does when $currentView changes,
+  // otherwise it'd show starting from whatever scroll offset Settings
+  // happened to be at.
+  $effect(() => {
+    manageBanksOpen;
+    window.scrollTo(0, 0);
+  });
+
   let tmpl = $derived($template);
   let month = $derived($currentMonth);
-  let bufferPlanned = $derived(month ? computeBufferPlanned(month) : 0);
+  let liveTotal = $derived(computeBankFreeTotal($bankPreviewStore));
+  let bufferPlanned = $derived(month ? computeBufferPlannedLive(month, liveTotal) : 0);
   let bufferLabels = $derived(tmpl?.bufferLabels ?? BUFFER_LABEL_PRESETS);
   let importing = $state(false);
   let pendingImportFile = $state(null);
-  let additionalIncomeAmount = $state('');
-  let additionalIncomeNote = $state('');
   let newBufferLabel = $state('');
   let newCategoryName = $state('');
-
-  // additionalIncome itself stays the plain summed total everywhere else in
-  // the app (calc.js, History, etc. all just read a number) -- this log is
-  // the editable source of truth going forward. A month that already had a
-  // total before this log existed gets a single synthetic legacy entry so
-  // it's immediately editable/deletable instead of silently stuck.
-  let additionalIncomeEntries = $derived.by(() => {
-    if (!month) return [];
-    if (month.additionalIncomeLog?.length) return month.additionalIncomeLog;
-    if (month.additionalIncome > 0) return [{ date: month.startedAt || null, amount: month.additionalIncome, legacy: true }];
-    return [];
-  });
-
-  let editingAiIdx = $state(null);
-  let editAiAmount = $state('');
-  let editAiNote = $state('');
-
-  async function saveAdditionalIncomeLog(log) {
-    const total = round2(log.reduce((s, e) => s + (e.amount || 0), 0));
-    await db.months.update(month.key, { additionalIncomeLog: log, additionalIncome: total });
-  }
 
   async function updateName(e) {
     const value = e.target.value.trim();
     await db.meta.put({ key: 'userName', value });
-  }
-
-  async function addAdditionalIncome() {
-    const amt = parseFloat(additionalIncomeAmount);
-    if (!amt) {
-      showToast('Enter an amount first');
-      return;
-    }
-    const log = [...additionalIncomeEntries, { date: new Date().toISOString(), amount: amt, note: additionalIncomeNote.trim() || undefined }];
-    await saveAdditionalIncomeLog(log);
-    additionalIncomeAmount = '';
-    additionalIncomeNote = '';
-    showToast(`Added RM ${fmt(amt)} additional income`);
-  }
-
-  function startEditAi(idx) {
-    editingAiIdx = idx;
-    editAiAmount = String(additionalIncomeEntries[idx].amount);
-    editAiNote = additionalIncomeEntries[idx].note || '';
-  }
-  async function commitEditAi() {
-    const amt = parseFloat(editAiAmount);
-    if (!amt) return showToast('Enter an amount first');
-    const log = additionalIncomeEntries.map((e, i) =>
-      i === editingAiIdx ? { date: e.date, amount: amt, note: editAiNote.trim() || undefined } : e
-    );
-    await saveAdditionalIncomeLog(log);
-    editingAiIdx = null;
-  }
-  async function deleteAi(idx) {
-    const log = additionalIncomeEntries.filter((_, i) => i !== idx);
-    await saveAdditionalIncomeLog(log);
-    showToast('Removed');
-  }
-  function formatAiDate(iso) {
-    if (!iso) return 'Before tracking';
-    const d = new Date(iso);
-    return isNaN(d) ? 'Before tracking' : d.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   async function updateIncome(e) {
@@ -123,13 +74,11 @@
   }
 
   // Deleting removes the category from the template and the current open month
-  // (closed months keep their frozen copy). Saving is protected -- it feeds the
-  // Goals pool and the savings flow, so it can never be deleted.
+  // (closed months keep their frozen copy).
   let confirmDeleteKey = $state(null);
   async function deleteCategory(index) {
     const result = await deleteCategoryHelper(tmpl, month, index);
     confirmDeleteKey = null;
-    if (result.blocked) return showToast("Saving feeds your Goals — it can't be deleted");
     showToast(`Removed ${result.name}`);
   }
 
@@ -200,6 +149,7 @@
   }
 </script>
 
+<div style:display={manageBanksOpen ? 'none' : 'contents'}>
 <h2 class="title">Commitments setup</h2>
 <p class="sub">Fixed categories reappear every month automatically. Buffer gets one pooled budget.</p>
 
@@ -222,47 +172,6 @@
     <input class="set-amt" style="width:100px;" value={month.income.toFixed(2)} onchange={updateIncome} />
   </div>
 
-  <div class="section-hd"><h3>Additional income</h3><span>this cycle</span></div>
-  <div class="card">
-    <div class="set-row" style="border:none;">
-      <span style="flex:1; font-size:13.5px; color:var(--lo);">Added so far this month</span>
-      <span class="num" style="font-weight:700; color:var(--good);">RM {fmt(month.additionalIncome || 0)}</span>
-    </div>
-    <p class="hint" style="margin:2px 0 10px;">For money received mid-cycle (freelance, gift, refund) — counts the same way a start-of-cycle bonus does, flowing straight into Buffer.</p>
-
-    {#each additionalIncomeEntries as e, i (i)}
-      {#if editingAiIdx === i}
-        <div class="tx-edit">
-          <input class="note-input num" bind:value={editAiAmount} inputmode="decimal" placeholder="0.00" />
-          <input class="note-input" bind:value={editAiNote} placeholder="Note (optional)" />
-          <div style="display:flex; gap:8px;">
-            <button class="io-btn" style="flex:1;" onclick={() => (editingAiIdx = null)}>Cancel</button>
-            <button class="save-btn" style="flex:1; margin-top:0;" onclick={commitEditAi}>Save</button>
-          </div>
-        </div>
-      {:else}
-        <div class="tx-row">
-          <div>
-            <div class="tx-note-main">{e.note || 'Additional income'}</div>
-            <div class="tx-date">{formatAiDate(e.date)}</div>
-          </div>
-          <span class="num tx-amt" style="color:var(--good);">+RM {fmt(e.amount)}</span>
-          <button class="icon-btn small" aria-label="Edit additional income" onclick={() => startEditAi(i)}>
-            <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-          </button>
-          <button class="icon-btn small" aria-label="Delete additional income" onclick={() => deleteAi(i)}>
-            <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        </div>
-      {/if}
-    {/each}
-
-    <div style="display:flex; gap:8px; margin-top:10px;">
-      <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={additionalIncomeAmount} style="flex:1;" />
-      <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px; background:var(--good); color:#fff;" onclick={addAdditionalIncome}>Add</button>
-    </div>
-    <input class="note-input" placeholder="Note (optional)" bind:value={additionalIncomeNote} style="margin-top:8px;" />
-  </div>
 {/if}
 
 {#if tmpl}
@@ -273,15 +182,9 @@
         <span class="dot" style="background:{cat.color}"></span>
         <input class="cat-name-input" value={cat.name} onchange={(e) => renameCategory(i, e)} />
         <input class="set-amt" value={cat.planned ? cat.planned.toFixed(2) : ''} placeholder="0.00" onchange={(e) => updateCategoryPlanned(i, e)} />
-        {#if cat.key === 'saving'}
-          <span class="cat-lock" title="Feeds your Goals pool — protected">
-            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          </span>
-        {:else}
-          <button class="cat-del" aria-label="Delete category" onclick={() => (confirmDeleteKey = cat.key)}>
-            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-        {/if}
+        <button class="cat-del" aria-label="Delete category" onclick={() => (confirmDeleteKey = cat.key)}>
+          <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
       {#if confirmDeleteKey === cat.key}
         <div class="del-confirm">
@@ -298,7 +201,7 @@
       <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px; background:var(--good); color:#fff;" onclick={addCategory}>Add</button>
     </div>
   </div>
-  <p class="hint" style="margin-left:4px;">Saving feeds your Goals pool (it's protected from deletion) — change it here and it applies from next month.</p>
+  <p class="hint" style="margin-left:4px;">Change a category here and it applies from next month.</p>
 
   <div class="section-hd"><h3>Buffer</h3><span>auto-computed</span></div>
   <div class="card" data-guide="settings-buffer">
@@ -307,7 +210,7 @@
       <span class="lbl2">This month's Buffer allocation</span>
       <span class="num" style="font-weight:700; font-size:14px;">{fmt(bufferPlanned)}</span>
     </div>
-    <p class="hint" style="margin-top:4px;">= Income − fixed commitments (Income already includes rolled-forward balance, Salary, bonus, and additional income). No need to set this — it's recalculated every month.</p>
+    <p class="hint" style="margin-top:4px;">= your real bank balances (free to spend, across every bank) − fixed commitments not yet paid. No need to set this — it's recalculated live.</p>
   </div>
 
   <div class="section-hd"><h3>Buffer labels</h3><span>tap a name to rename</span></div>
@@ -368,6 +271,7 @@ Guided tour disabled for now -- revisit later if still wanted.
      to expect to confirm the installed app actually picked up the latest
      deploy, not a stale cached build. -->
 <p class="hint" style="text-align:center; margin-top:22px;">BajetBro v{__APP_VERSION__}</p>
+</div>
 
 <ManageBanksSheet open={manageBanksOpen} onClose={() => (manageBanksOpen = false)} />
 
@@ -388,17 +292,15 @@ Guided tour disabled for now -- revisit later if still wanted.
     outline: none;
     border-bottom-color: var(--stroke-2);
   }
-  .cat-del,
-  .cat-lock {
+  .cat-del {
     background: none;
     border: none;
     padding: 4px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
+    color: var(--dim);
   }
-  .cat-del { color: var(--dim); }
-  .cat-lock { color: var(--gold); }
   .del-confirm {
     padding: 12px 6px 6px;
     font-size: 12.5px;
@@ -406,14 +308,4 @@ Guided tour disabled for now -- revisit later if still wanted.
     border-bottom: 1px solid var(--stroke);
   }
   .save-btn.danger { background: var(--red); color: #2a0709; }
-  .tx-row { display: flex; align-items: center; gap: 8px; padding: 10px 4px; border-bottom: 1px solid var(--stroke); }
-  .tx-row:last-child { border-bottom: none; }
-  .tx-row > div:first-child { flex: 1; min-width: 0; }
-  .tx-note-main { font-size: 13.5px; font-weight: 600; color: var(--hi); }
-  .tx-date { font-size: 11px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }
-  .tx-amt { font-weight: 600; }
-  .icon-btn.small { width: 28px; height: 28px; }
-  .icon-btn.small + .icon-btn.small { margin-left: 6px; }
-  .tx-edit { padding: 10px 4px; border-bottom: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 8px; }
-  .tx-edit:last-child { border-bottom: none; }
 </style>

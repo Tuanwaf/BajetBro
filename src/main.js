@@ -4,7 +4,7 @@ import App from './App.svelte';
 import db from './lib/db.js';
 import { seedIfNeeded } from './lib/seed.js';
 import { initPersonalizationFlags } from './lib/personalization.js';
-import { seedBanksIfNeeded } from './lib/bankPreviewStore.js';
+import { seedBanksIfNeeded, backfillLegacyBankTags } from './lib/bankPreviewStore.js';
 // Guided tour is disabled for now -- see the commented-out block below.
 // import { startTour } from './lib/tour.js';
 import { initInstallPrompt, isStandalone } from './lib/installPrompt.js';
@@ -66,10 +66,7 @@ async function init() {
   await seedIfNeeded(db);
   await initPersonalizationFlags(db);
   await seedBanksIfNeeded();
-
-  mount(App, {
-    target: document.getElementById('app'),
-  });
+  await backfillLegacyBankTags();
 
   // Guided tour is disabled for now -- revisit later if still wanted.
   // The tour now only covers the dashboard/settings/goals/history -- the
@@ -100,6 +97,16 @@ async function init() {
   // Keep the splash up briefly even on a fast/warm load, so its pulse is
   // actually visible rather than flashing past in a frame or two.
   await minSplashTime;
+
+  // Mounted here, not right after seeding, so the splash is the only thing
+  // in the DOM for the entire loading window instead of a layer stacked on
+  // top of an already-mounted, already-painting Home screen -- the app now
+  // only starts existing once the splash is already fading out, giving it
+  // the fade's own ~350ms to finish mounting before it's ever visible.
+  mount(App, {
+    target: document.getElementById('app'),
+  });
+
   const splash = document.getElementById('splash');
   if (splash) {
     splash.classList.add('splash-hide');

@@ -28,6 +28,7 @@ export const BANK_LOGOS = [
   { slug: 'hong-leong-bank', label: 'Hong Leong Bank' },
   { slug: 'ambank', label: 'AmBank' },
   { slug: 'bank-islam', label: 'Bank Islam' },
+  { slug: 'tabung-haji', label: 'Tabung Haji' },
   { slug: 'bank-muamalat', label: 'Bank Muamalat' },
   { slug: 'bank-rakyat', label: 'Bank Rakyat' },
   { slug: 'bsn', label: 'BSN' },
@@ -52,6 +53,7 @@ export const BANK_LOGOS = [
   { slug: 'atome', label: 'Atome' },
   { slug: 'grabpaylater', label: 'GrabPayLater' },
   { slug: 'spaylater', label: 'SPayLater' },
+  { slug: 'setel', label: 'Setel' },
 ];
 
 // Card face designs -- background + matching text color + a fixed line-art
@@ -117,6 +119,16 @@ export function getCardDesign(key) {
 export function cardBorderColor(bank) {
   if (!bank.design || bank.design === 'classic') return bank.color;
   return getCardDesign(bank.design).accent;
+}
+
+// This exact "bank.type -> label" mapping was independently duplicated in
+// BankFormFields.svelte, ManageBanksSheet.svelte, and BankCard.svelte (twice
+// -- front/back face) even before "card" existed as a third type -- one
+// shared place for it now instead of a fourth copy of a three-way ternary.
+export function bankTypeLabel(type) {
+  if (type === 'ewallet') return 'E-wallet';
+  if (type === 'card') return 'Card';
+  return 'Bank';
 }
 
 export const MONTH_NAMES = [

@@ -29,6 +29,7 @@
   // month-level figure, not a bank field) so it lives here alongside it.
   let bankName = $state('');
   let bankBalance = $state('');
+  let bankFixedDeposit = $state('');
   let bankType = $state('bank');
   let bankIsMain = $state(true);
   let bankColor = $state(GOAL_COLORS[0]);
@@ -107,6 +108,7 @@
     await addBank({
       name: bankName.trim(),
       balance: balanceNum,
+      fixedDeposit: Number(bankFixedDeposit) || 0,
       type: bankType,
       isMain: bankIsMain,
       color: bankColor,
@@ -172,6 +174,7 @@
     <BankFormFields
       bind:name={bankName}
       bind:balance={bankBalance}
+      bind:fixedDeposit={bankFixedDeposit}
       bind:type={bankType}
       bind:isMain={bankIsMain}
       bind:color={bankColor}

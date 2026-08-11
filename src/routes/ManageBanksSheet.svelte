@@ -4,8 +4,9 @@
   import { quintOut } from 'svelte/easing';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { getCardDesign, cardBorderColor } from '../lib/constants.js';
+  import { getCardDesign, cardBorderColor, bankTypeLabel } from '../lib/constants.js';
   import { banks as bankPreviewStore, focusedBankIndex, addBank, updateBank, deleteBank } from '../lib/bankPreviewStore.js';
+  import { sheetPageCount } from '../lib/viewStore.js';
   import BankFormSheet from './BankFormSheet.svelte';
   import BankIcon from '../lib/components/BankIcon.svelte';
   import CardPattern from '../lib/components/CardPattern.svelte';
@@ -35,7 +36,19 @@
     fallback: (node) => fade(node, { duration: 200 }),
   });
 
+  // Doesn't participate in openSheetCount (see viewStore.js) -- see
+  // BankFormSheet.svelte's comment on the same removal for why: this is a
+  // .sheet-page sharing the root document scroll now, not a position:fixed
+  // overlay, and Settings' own content behind it is already fully
+  // display:none rather than just visually covered. Registers on
+  // sheetPageCount instead, so the tab bar hides while this is showing.
   let { open, onClose } = $props();
+
+  $effect(() => {
+    if (!open) return;
+    sheetPageCount.update((n) => n + 1);
+    return () => sheetPageCount.update((n) => n - 1);
+  });
 
   let banksList = $derived($bankPreviewStore);
   let focusedIndex = $derived($focusedBankIndex);
@@ -43,7 +56,7 @@
 
   function bankTag(entry) {
     if (entry.bank.isMain) return 'Main bank';
-    return entry.bank.type === 'ewallet' ? 'E-wallet' : 'Bank';
+    return bankTypeLabel(entry.bank.type);
   }
 
   let focusedDesign = $derived(getCardDesign(focusedEntry?.bank?.design));
@@ -67,6 +80,15 @@
   let formOpen = $state(false);
   let formMode = $state('add');
   let formInitial = $state(null);
+
+  // Same reasoning as Settings.svelte's manageBanksOpen effect -- Bank Form
+  // now shares the root document scroll too, so it needs its own top-reset
+  // on open/close instead of showing at whatever scroll offset the bank
+  // list happened to be at.
+  $effect(() => {
+    formOpen;
+    window.scrollTo(0, 0);
+  });
 
   // Real Apple Wallet doesn't show the full overlapping stack by default --
   // only the front card plus a peek of the next one behind it. Tapping that
@@ -121,6 +143,7 @@
     formInitial = {
       name: focusedEntry.bank.name,
       balance: focusedEntry.balance,
+      fixedDeposit: focusedEntry.fixedDeposit,
       type: focusedEntry.bank.type,
       isMain: focusedEntry.bank.isMain,
       color: focusedEntry.bank.color,
@@ -142,9 +165,9 @@
     formOpen = false;
   }
 
-  async function handleFormDelete() {
+  async function handleFormDelete(promoteMainId) {
     if (banksList.length <= 1) return showToast("You need at least one bank");
-    await deleteBank(focusedIndex);
+    await deleteBank(focusedIndex, { promoteMainId });
     formOpen = false;
     showToast('Removed');
   }
@@ -154,15 +177,19 @@
   });
 </script>
 
-<div class="sheet" class:open>
-  <div class="sheet-hd">
+<div class="sheet-page" class:open>
+  <div style:display={formOpen ? 'none' : 'contents'}>
+  <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
     <h2>Your banks</h2>
-    <button class="add-link" onclick={openAddForm}>Add</button>
+    <button class="add-link" onclick={openAddForm}>
+      <svg viewBox="0 0 24 24" fill="none" width="13" height="13"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      Add
+    </button>
   </div>
-  <div class="sheet-body">
+  <div class="sheet-page-body">
     <div class="sheet-body-top">
       <p class="hint" style="margin:0 4px 14px;">Tap the card above to edit it, or the list below to pick a different one as your main focus on Home.</p>
 
@@ -186,7 +213,11 @@
               </div>
               <div class="stack-detail">
                 <div class="bank-balance-lbl">Balance</div>
-                <div class="bank-balance-amt"><span class="cur">RM</span>{fmt(focusedEntry.balance)}</div>
+                <div class="bank-balance-amt">
+                  <span class="cur">RM</span>{fmt(focusedEntry.balance)}
+                  {#if focusedEntry.reserved > 0.005}<span class="reserved-tag">· RM {fmt(focusedEntry.reserved)} reserved</span>{/if}
+                  {#if focusedEntry.fixedDeposit > 0.005}<span class="reserved-tag">· RM {fmt(focusedEntry.fixedDeposit)} fixed deposit</span>{/if}
+                </div>
                 <div class="bank-stats-row">
                   <div class="bank-stat">
                     <div class="k">Income</div>
@@ -252,7 +283,11 @@
               </div>
               <div class="stack-detail">
                 <div class="bank-balance-lbl">Balance</div>
-                <div class="bank-balance-amt"><span class="cur">RM</span>{fmt(entry.balance)}</div>
+                <div class="bank-balance-amt">
+                  <span class="cur">RM</span>{fmt(entry.balance)}
+                  {#if entry.reserved > 0.005}<span class="reserved-tag">· RM {fmt(entry.reserved)} reserved</span>{/if}
+                  {#if entry.fixedDeposit > 0.005}<span class="reserved-tag">· RM {fmt(entry.fixedDeposit)} fixed deposit</span>{/if}
+                </div>
                 <div class="bank-stats-row">
                   <div class="bank-stat">
                     <div class="k">Income</div>
@@ -271,25 +306,38 @@
     </div>
 
   </div>
+  </div>
 </div>
 
 <BankFormSheet
   open={formOpen}
   mode={formMode}
   initial={formInitial}
+  otherBanks={focusedEntry ? banksList.filter((b) => b.bank.id !== focusedEntry.bank.id) : banksList}
   onClose={() => (formOpen = false)}
   onSubmit={handleFormSubmit}
   onDelete={formMode === 'edit' ? handleFormDelete : null}
 />
 
 <style>
-  .add-link { background: none; border: none; font-size: 15px; font-weight: 700; color: var(--gold); padding: 4px; }
+  .add-link {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--panel); border: 1.5px solid var(--stroke-2); border-radius: 99px;
+    box-shadow: 2px 2px 0 var(--stroke-2);
+    font-size: 13.5px; font-weight: 700; color: var(--gold); padding: 6px 12px 6px 10px;
+  }
 
-  /* .sheet-body is flex:1 with overflow-y:auto (app.css) -- turning it into
-     a column flex container here lets .stack-wrap grow to fill whatever's
-     left and push the peek stack down to the true bottom of the visible
-     sheet, like real Wallet, instead of a fixed guess-a-margin gap. */
-  .sheet-body { display: flex; flex-direction: column; }
+  /* .sheet-page-body is plain block (app.css) -- turning it into a column
+     flex container here lets .stack-wrap grow to fill whatever's left and
+     push the peek stack down to the true bottom of the visible content,
+     like real Wallet, instead of a fixed guess-a-margin gap. Needs an
+     explicit height now that it's normal-flow rather than flex:1 inside a
+     fixed-height .sheet -- roughly the viewport minus .view's own top/
+     bottom padding (safe-area + tab-bar clearance). Approximate on purpose
+     (doesn't subtract this component's own header height) -- rough is fine
+     for what this min-height is for (giving the collapsed peek stack room
+     to sit low), revisit only if it looks visually off on-device. */
+  .sheet-page-body { display: flex; flex-direction: column; min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 124px); }
   .sheet-body-top { flex-shrink: 0; }
   /* Svelte keeps an out-transitioning element in the DOM (at its full,
      normal-flow size) for the whole crossfade duration, then removes it --
@@ -419,6 +467,10 @@
     color: var(--card-fg, var(--hi));
   }
   .bank-balance-amt .cur { font-size: 15px; color: var(--card-dim, var(--dim)); font-weight: 600; margin-right: 3px; }
+  .bank-balance-amt .reserved-tag {
+    font-family: var(--body); font-size: 11.5px; font-weight: 600;
+    color: var(--card-dim, var(--dim)); letter-spacing: 0; margin-left: 2px;
+  }
   .bank-stats-row { display: flex; justify-content: space-between; align-items: flex-start; }
   .bank-stat.right { text-align: right; }
   .bank-stat .k { font-size: 10.5px; color: var(--card-dim, var(--dim)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }

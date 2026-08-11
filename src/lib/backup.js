@@ -2,11 +2,18 @@ import db from './db';
 import { migrateV1 } from './migrate.js';
 import { initPersonalizationFlags } from './personalization.js';
 import { endTour } from './tour.js';
+import { backfillSingleBank, backfillMissingBankTags } from './bankPreviewStore.js';
 
-const SCHEMA_VERSION = 2;
+// v3 -- adds `banks` (see feature/multi-bank, db.js v4). A v1/v2 backup has
+// no bank list at all; importing one backfills a single real bank right
+// away (see backfillSingleBank below) rather than leaving db.banks empty
+// until the next app boot -- the app keeps running live after import
+// (no forced reload), so an empty bank list would otherwise be a real,
+// if brief, broken state, not just a theoretical one.
+const SCHEMA_VERSION = 3;
 
 export async function exportBackup() {
-  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans, givingGoalsEnabled, tabungHajiEnabled] = await Promise.all([
+  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans, banks, givingGoalsEnabled, tabungHajiEnabled] = await Promise.all([
     db.template.get('current'),
     db.months.toArray(),
     db.hutangPots.toArray(),
@@ -15,6 +22,7 @@ export async function exportBackup() {
     db.goals.toArray(),
     db.savingsSpends.toArray(),
     db.loans.toArray(),
+    db.banks.toArray(),
     db.meta.get('givingGoalsEnabled'),
     db.meta.get('tabungHajiEnabled'),
   ]);
@@ -30,6 +38,7 @@ export async function exportBackup() {
     goals,
     savingsSpends,
     loans,
+    banks,
     givingGoalsEnabled: !!givingGoalsEnabled?.value,
     tabungHajiEnabled: !!tabungHajiEnabled?.value,
   };
@@ -56,7 +65,7 @@ export async function importBackup(file) {
     throw new Error(`Not valid JSON (${err.message})`);
   }
 
-  if (data.schemaVersion !== 1 && data.schemaVersion !== 2) {
+  if (data.schemaVersion !== 1 && data.schemaVersion !== 2 && data.schemaVersion !== 3) {
     throw new Error(`Unsupported backup schema version: ${data.schemaVersion}`);
   }
 
@@ -73,6 +82,11 @@ export async function importBackup(file) {
   }
 
   const loans = data.loans || [];
+  // A v1/v2 backup predates the bank list entirely -- leaving db.banks empty
+  // after import isn't a loss (there was nothing to restore), and
+  // seedBanksIfNeeded() backfills one real bank from the just-restored
+  // months on next load, same as any other pre-multi-bank install.
+  const banks = data.banks || [];
 
   await db.transaction(
     'rw',
@@ -84,6 +98,7 @@ export async function importBackup(file) {
     db.goals,
     db.savingsSpends,
     db.loans,
+    db.banks,
     db.meta,
     async () => {
       await Promise.all([
@@ -94,6 +109,7 @@ export async function importBackup(file) {
         db.goals.clear(),
         db.savingsSpends.clear(),
         db.loans.clear(),
+        db.banks.clear(),
       ]);
 
       if (data.template) await db.template.put(data.template);
@@ -104,10 +120,38 @@ export async function importBackup(file) {
       if (goals.length) await db.goals.bulkPut(goals);
       if (savingsSpends.length) await db.savingsSpends.bulkAdd(savingsSpends.map(({ id, ...rest }) => rest));
       if (loans.length) await db.loans.bulkAdd(loans.map(({ id, ...rest }) => rest));
+      if (banks.length) {
+        await db.banks.bulkPut(banks);
+      } else {
+        // A v1/v2 backup (or any export with no banks) leaves db.banks
+        // empty otherwise -- backfill one real bank from the restored
+        // current month right now, same idea as seedBanksIfNeeded() but not
+        // deferred to the next boot, since the app keeps running live here.
+        const restoredCurrent = (data.months || []).find((m) => !m.closed);
+        if (restoredCurrent) await backfillSingleBank(restoredCurrent);
+      }
 
       // A restored backup already has real data -- mark seeded so the
       // historical seed script never overwrites it on a future load.
       await db.meta.put({ key: 'seeded', value: true });
+      // Only mark banks seeded when db.banks actually ended up with
+      // something -- if there was no open month to backfill from either
+      // (rare), leave this unset so seedBanksIfNeeded() gets another chance
+      // once a month exists.
+      const bankList = await db.banks.orderBy('order').toArray();
+      if (bankList.length > 0) await db.meta.put({ key: 'banksSeeded', value: true });
+
+      // Import just replaced db.months wholesale, so backfillLegacyBankTags'
+      // own one-time flag can't be trusted here -- an old v1/v2 backup
+      // restored on top of an already-migrated install would otherwise be
+      // skipped and left with untagged transactions. Run the tagging pass
+      // directly (unconditionally) instead, targeting the same bank
+      // seedBanksIfNeeded/backfillLegacyBankTags would pick.
+      const mainBank = bankList.find((b) => b.bank.isMain) || bankList[0];
+      if (mainBank) {
+        await backfillMissingBankTags(mainBank.bank.id);
+        await db.meta.put({ key: 'legacyBankTagsBackfilled', value: true });
+      }
 
       if (data.givingGoalsEnabled) await db.meta.put({ key: 'givingGoalsEnabled', value: true });
       if (data.tabungHajiEnabled) await db.meta.put({ key: 'tabungHajiEnabled', value: true });
