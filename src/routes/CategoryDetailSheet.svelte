@@ -3,6 +3,7 @@
   import { round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
+  import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
@@ -22,6 +23,11 @@
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
   let pots = $derived($hutangPots ?? []);
+  // Editable from Settings -> Buffer labels; falls back to the built-in
+  // defaults for templates created before that field existed. Same source
+  // AddExpenseSheet uses, so "move to Buffer" offers the exact same labels
+  // as adding a fresh Buffer entry would.
+  let bufferLabels = $derived(tmpl?.bufferLabels ?? BUFFER_LABEL_PRESETS);
   let banksList = $derived($bankPreviewStore);
   function bankName(id) {
     return banksList.find((b) => b.bank.id === id)?.bank.name;
@@ -39,7 +45,9 @@
   let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
-  let editDest = $state(null); // destination category key
+  let editDest = $state(null); // destination category key, or 'buffer'
+  let editBufferLabel = $state(null); // when editDest === 'buffer': a preset label or 'custom'
+  let editCustomBufferLabel = $state('');
   let editPaid = $state(''); // amount paid back to you (reimbursement)
   let editPaidAbsolute = $state(false); // true once "edit total" or "clear" is tapped -- editPaid becomes the new total instead of an amount to add
 
@@ -51,6 +59,8 @@
     editAmt = String(tx.amount);
     editNote = tx.note || '';
     editDest = category.key;
+    editBufferLabel = null;
+    editCustomBufferLabel = '';
     editPaid = ''; // amount to ADD to tx.reimbursed, not the new total
     editPaidAbsolute = false;
   }
@@ -114,6 +124,43 @@
     const destKey = editDest;
     const oldNet = txNet(tx);
     const newNet = round2(amt - paid);
+
+    if (destKey === 'buffer') {
+      const label = editBufferLabel === 'custom' ? editCustomBufferLabel.trim() || 'Misc' : editBufferLabel;
+      if (!label) return showToast('Pick a Buffer label first');
+      // Leaving this category entirely -- same removal as the cross-category
+      // branch below, just landing in month.extras instead of another
+      // category's transactions.
+      const cats = month.categories.map((c) =>
+        c.key === srcKey
+          ? { ...c, actual: round2(c.actual - oldNet), transactions: (c.transactions || []).filter((t) => t !== tx) }
+          : c
+      );
+      await writeCategories(cats);
+      const newExtra = { name: label, actual: newNet, date: tx.date, note: note || undefined, reimbursed: paid || undefined, bankId: tx.bankId };
+      let extras = [...(month.extras || []), newExtra];
+      await db.months.update(month.key, { extras });
+      if (srcKey === 'saving') await adjustPot(-oldNet);
+      // A new custom label becomes a permanent quick-pick chip, same as
+      // AddExpenseSheet does when one is typed there.
+      if (editBufferLabel === 'custom' && label && !bufferLabels.includes(label)) {
+        await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, label] });
+      }
+      // Bank tag never changes here -- moving categories doesn't change which
+      // account physically paid for it, only the gross amount does.
+      if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount - amt);
+      if (tx.bankId) {
+        const consumption = await reconcileGoalReserve(tx.bankId, tx.reserveConsumption);
+        if (consumption.length || tx.reserveConsumption?.length) {
+          extras = extras.map((e) => (e === newExtra ? { ...e, reserveConsumption: consumption.length ? consumption : undefined } : e));
+          await db.months.update(month.key, { extras });
+        }
+      }
+      showToast(`Moved to Buffer / ${label}`);
+      editingIdx = null;
+      return;
+    }
+
     // A single object reference, reused below to find this exact entry
     // again after the writes -- `month.categories` itself can't be trusted
     // to reflect the write we JUST made (liveQuery hasn't necessarily
@@ -226,7 +273,22 @@
                       <span class="dot" style="background:{c.color}"></span>{c.name}
                     </button>
                   {/each}
+                  <button class="chip ghost" class:selected={editDest === 'buffer'} style={editDest === 'buffer' ? `color:${BUFFER_COLOR}` : ''} onclick={() => (editDest = 'buffer')}>
+                    <span class="dot" style="background:{BUFFER_COLOR}"></span>Buffer
+                  </button>
                 </div>
+                {#if editDest === 'buffer'}
+                  <div class="mini-lbl">Buffer label</div>
+                  <div class="chip-grid">
+                    {#each bufferLabels as lbl}
+                      <button class="chip ghost" class:selected={editBufferLabel === lbl} style={editBufferLabel === lbl ? `color:${BUFFER_COLOR}` : ''} onclick={() => (editBufferLabel = lbl)}>{lbl}</button>
+                    {/each}
+                    <button class="chip ghost" class:selected={editBufferLabel === 'custom'} style={editBufferLabel === 'custom' ? `color:${BUFFER_COLOR}` : ''} onclick={() => (editBufferLabel = 'custom')}>+ Custom</button>
+                  </div>
+                  {#if editBufferLabel === 'custom'}
+                    <input class="note-input" placeholder="Type your own label…" bind:value={editCustomBufferLabel} />
+                  {/if}
+                {/if}
                 <div style="display:flex; gap:8px; margin-top:10px;">
                   <button class="io-btn" style="flex:1;" onclick={cancelEdit}>Cancel</button>
                   <button class="save-btn" style="flex:1; margin-top:0;" onclick={() => commitEdit(tx)}>Save</button>

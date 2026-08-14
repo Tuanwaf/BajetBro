@@ -215,8 +215,6 @@
                 <div class="bank-balance-lbl">Balance</div>
                 <div class="bank-balance-amt">
                   <span class="cur">RM</span>{fmt(focusedEntry.balance)}
-                  {#if focusedEntry.reserved > 0.005}<span class="reserved-tag">· RM {fmt(focusedEntry.reserved)} reserved</span>{/if}
-                  {#if focusedEntry.fixedDeposit > 0.005}<span class="reserved-tag">· RM {fmt(focusedEntry.fixedDeposit)} fixed deposit</span>{/if}
                 </div>
                 <div class="bank-stats-row">
                   <div class="bank-stat">
@@ -285,8 +283,6 @@
                 <div class="bank-balance-lbl">Balance</div>
                 <div class="bank-balance-amt">
                   <span class="cur">RM</span>{fmt(entry.balance)}
-                  {#if entry.reserved > 0.005}<span class="reserved-tag">· RM {fmt(entry.reserved)} reserved</span>{/if}
-                  {#if entry.fixedDeposit > 0.005}<span class="reserved-tag">· RM {fmt(entry.fixedDeposit)} fixed deposit</span>{/if}
                 </div>
                 <div class="bank-stats-row">
                   <div class="bank-stat">
@@ -467,10 +463,6 @@
     color: var(--card-fg, var(--hi));
   }
   .bank-balance-amt .cur { font-size: 15px; color: var(--card-dim, var(--dim)); font-weight: 600; margin-right: 3px; }
-  .bank-balance-amt .reserved-tag {
-    font-family: var(--body); font-size: 11.5px; font-weight: 600;
-    color: var(--card-dim, var(--dim)); letter-spacing: 0; margin-left: 2px;
-  }
   .bank-stats-row { display: flex; justify-content: space-between; align-items: flex-start; }
   .bank-stat.right { text-align: right; }
   .bank-stat .k { font-size: 10.5px; color: var(--card-dim, var(--dim)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }

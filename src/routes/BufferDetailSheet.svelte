@@ -1,9 +1,9 @@
 <script>
-  import { currentMonth } from '../lib/stores.js';
+  import { currentMonth, template, hutangPots } from '../lib/stores.js';
   import { round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { BUFFER_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
@@ -19,6 +19,12 @@
   });
 
   let month = $derived($currentMonth);
+  let tmpl = $derived($template);
+  let pots = $derived($hutangPots ?? []);
+  // Same source AddExpenseSheet/CategoryDetailSheet use -- picking a
+  // different Buffer label here offers the exact same presets as adding a
+  // fresh entry would, instead of a free-text field.
+  let bufferLabels = $derived(tmpl?.bufferLabels ?? BUFFER_LABEL_PRESETS);
   let banksList = $derived($bankPreviewStore);
   function bankName(id) {
     return banksList.find((b) => b.bank.id === id)?.bank.name;
@@ -39,7 +45,9 @@
   let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
-  let editLabel = $state('');
+  let editDest = $state('buffer'); // 'buffer', or a fixed category key
+  let editBufferLabel = $state(null); // when editDest === 'buffer': a preset label or 'custom'
+  let editCustomBufferLabel = $state('');
   let editPaid = $state('');
   let editPaidAbsolute = $state(false); // true once "edit total" or "clear" is tapped -- editPaid becomes the new total instead of an amount to add
 
@@ -51,7 +59,9 @@
     editingIdx = x.idx;
     editAmt = String(fullOf(x.e));
     editNote = x.e.note || '';
-    editLabel = x.e.name;
+    editDest = 'buffer';
+    editBufferLabel = bufferLabels.includes(x.e.name) ? x.e.name : 'custom';
+    editCustomBufferLabel = bufferLabels.includes(x.e.name) ? '' : x.e.name;
     editPaid = ''; // amount to ADD to e.reimbursed, not the new total
     editPaidAbsolute = false;
   }
@@ -66,6 +76,25 @@
     editPaidAbsolute = true;
     editPaid = '0';
   }
+  async function writeCategories(newCats) {
+    await db.months.update(month.key, { categories: newCats });
+  }
+
+  // Keep this month's Saving pot in step -- see CategoryDetailSheet.svelte's
+  // copy of this same helper for why (its `initial` feeds the shared Goals
+  // pool). Only relevant here when an entry moves INTO the Saving category.
+  async function adjustPot(delta) {
+    if (!delta) return;
+    const p = pots.find((x) => x.month === month.key);
+    if (p) {
+      const ni = round2(p.initial + delta);
+      if (ni > 0.005) await db.hutangPots.update(month.key, { initial: ni });
+      else await db.hutangPots.delete(month.key);
+    } else if (delta > 0) {
+      await db.hutangPots.put({ month: month.key, initial: round2(delta) });
+    }
+  }
+
   async function saveEdit() {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
@@ -75,9 +104,40 @@
     const paid = editPaidAbsolute
       ? Math.min(Math.max(paidInput, 0), amt) // direct override of the total
       : Math.min(Math.max((original.reimbursed || 0) + paidInput, 0), amt); // stacks onto what's already recorded
-    const name = editLabel.trim() || label;
+    const note = editNote.trim();
+    const newNet = round2(amt - paid);
+    const destKey = editDest;
+
+    if (destKey !== 'buffer') {
+      // Leaving Buffer entirely for a fixed category.
+      const extras = month.extras.filter((_, i) => i !== editingIdx);
+      await db.months.update(month.key, { extras });
+      const newTx = { amount: amt, date: original.date, note: note || undefined, reimbursed: paid || undefined, bankId: original.bankId };
+      let cats = month.categories.map((c) =>
+        c.key === destKey ? { ...c, actual: round2(c.actual + newNet), transactions: [...(c.transactions || []), newTx] } : c
+      );
+      await writeCategories(cats);
+      if (destKey === 'saving') await adjustPot(newNet);
+      if (original.bankId) await adjustBankBalance(original.bankId, oldFull - amt);
+      if (original.bankId) {
+        const consumption = await reconcileGoalReserve(original.bankId, original.reserveConsumption);
+        if (consumption.length || original.reserveConsumption?.length) {
+          cats = cats.map((c) =>
+            c.key === destKey ? { ...c, transactions: c.transactions.map((t) => (t === newTx ? { ...t, reserveConsumption: consumption.length ? consumption : undefined } : t)) } : c
+          );
+          await writeCategories(cats);
+        }
+      }
+      const destName = month.categories.find((c) => c.key === destKey)?.name ?? '';
+      showToast(`Moved to ${destName}`);
+      editingIdx = null;
+      if (extras.filter((e) => e.name === label).length === 0) onClose();
+      return;
+    }
+
+    const newLabel = editBufferLabel === 'custom' ? editCustomBufferLabel.trim() || 'Misc' : editBufferLabel || label;
     let extras = month.extras.map((e, i) =>
-      i === editingIdx ? { ...e, actual: round2(amt - paid), reimbursed: paid || undefined, note: editNote.trim() || undefined, name } : e
+      i === editingIdx ? { ...e, actual: newNet, reimbursed: paid || undefined, note: note || undefined, name: newLabel } : e
     );
     await db.months.update(month.key, { extras });
     if (original.bankId) await adjustBankBalance(original.bankId, oldFull - amt);
@@ -92,8 +152,16 @@
         await db.months.update(month.key, { extras });
       }
     }
+    // A new custom label becomes a permanent quick-pick chip, same as
+    // AddExpenseSheet does when one is typed there.
+    if (editBufferLabel === 'custom' && newLabel && !bufferLabels.includes(newLabel)) {
+      await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, newLabel] });
+    }
     editingIdx = null;
-    if (name !== label) showToast(`Moved to ${name}`);
+    if (newLabel !== label) {
+      showToast(`Moved to ${newLabel}`);
+      if (extras.filter((e) => e.name === label).length === 0) onClose();
+    }
   }
   async function deleteEntry(x) {
     const extras = month.extras.filter((_, i) => i !== x.idx);
@@ -159,8 +227,29 @@
             </div>
             <input class="note-input num" bind:value={editPaid} inputmode="decimal" placeholder={editPaidAbsolute ? 'New total, e.g. 13.50' : x.e.reimbursed ? 'Add more, e.g. 1.00' : '0.00'} />
             {#if editPaidAbsolute}<p class="hint-tiny">Editing the total directly — this replaces the RM {fmt(x.e.reimbursed || 0)} already recorded.</p>{/if}
-            <div class="mini-lbl">Label</div>
-            <input class="note-input" bind:value={editLabel} placeholder="Buffer label" />
+            <div class="mini-lbl">Move to</div>
+            <div class="chip-grid">
+              <button class="chip ghost" class:selected={editDest === 'buffer'} style={editDest === 'buffer' ? `color:${BUFFER_COLOR}` : ''} onclick={() => (editDest = 'buffer')}>
+                <span class="dot" style="background:{BUFFER_COLOR}"></span>Buffer
+              </button>
+              {#each month.categories as c (c.key)}
+                <button class="chip ghost" class:selected={editDest === c.key} style={editDest === c.key ? `color:${c.color}` : ''} onclick={() => (editDest = c.key)}>
+                  <span class="dot" style="background:{c.color}"></span>{c.name}
+                </button>
+              {/each}
+            </div>
+            {#if editDest === 'buffer'}
+              <div class="mini-lbl">Buffer label</div>
+              <div class="chip-grid">
+                {#each bufferLabels as lbl}
+                  <button class="chip ghost" class:selected={editBufferLabel === lbl} style={editBufferLabel === lbl ? `color:${BUFFER_COLOR}` : ''} onclick={() => (editBufferLabel = lbl)}>{lbl}</button>
+                {/each}
+                <button class="chip ghost" class:selected={editBufferLabel === 'custom'} style={editBufferLabel === 'custom' ? `color:${BUFFER_COLOR}` : ''} onclick={() => (editBufferLabel = 'custom')}>+ Custom</button>
+              </div>
+              {#if editBufferLabel === 'custom'}
+                <input class="note-input" placeholder="Type your own label…" bind:value={editCustomBufferLabel} />
+              {/if}
+            {/if}
             <div style="display:flex; gap:8px; margin-top:10px;">
               <button class="io-btn" style="flex:1;" onclick={cancelEdit}>Cancel</button>
               <button class="save-btn" style="flex:1; margin-top:0;" onclick={saveEdit}>Save</button>
@@ -196,7 +285,7 @@
         <p class="hint" style="margin:2px 0;">No entries under this label.</p>
       {/each}
     </div>
-    <p class="hint">Same label, split into individual entries — change the Label field to move one under a different Buffer name.</p>
+    <p class="hint">Same label, split into individual entries — tap ✎ and use "Move to" to shift one under a different Buffer label or a fixed category instead.</p>
   </div>
 </div>
 
