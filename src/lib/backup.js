@@ -2,7 +2,7 @@ import db from './db';
 import { migrateV1 } from './migrate.js';
 import { initPersonalizationFlags } from './personalization.js';
 import { endTour } from './tour.js';
-import { backfillSingleBank, backfillMissingBankTags } from './bankPreviewStore.js';
+import { backfillSingleBank, backfillMissingBankTags, backfillSalaryCredit } from './bankPreviewStore.js';
 
 // v3 -- adds `banks` (see feature/multi-bank, db.js v4). A v1/v2 backup has
 // no bank list at all; importing one backfills a single real bank right
@@ -157,6 +157,13 @@ export async function importBackup(file) {
       if (data.tabungHajiEnabled) await db.meta.put({ key: 'tabungHajiEnabled', value: true });
     }
   );
+
+  // Same reasoning as backfillMissingBankTags above -- this only runs at
+  // app boot (main.js) otherwise, so a backup restored mid-session (no
+  // reload in between) would leave the freshly-imported current month
+  // missing salaryCredit until the next relaunch, showing its Start figure
+  // short by exactly its salary until then.
+  await backfillSalaryCredit();
 
   // Fallback for backups exported before these flags existed -- infers them
   // from the restored data itself (e.g. an existing giving-type goal).

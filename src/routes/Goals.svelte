@@ -12,7 +12,7 @@
   } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
-  import { openAdd } from '../lib/viewStore.js';
+  import { openAdd, sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
   import { GOAL_COLORS } from '../lib/constants.js';
   import db from '../lib/db.js';
@@ -283,6 +283,21 @@
   $effect(() => {
     anySheetOpen;
     window.scrollTo(0, 0);
+  });
+
+  // Goal Detail/New Goal/Closed Goals live directly in this file rather
+  // than as separate components (unlike LoanLogSheet, which already
+  // registers itself) -- so unlike every other .sheet-page in the app,
+  // these three never told App.svelte's TabBar to hide itself while they
+  // were open, leaving the floating tab bar visible behind them the whole
+  // time. loanLogOpen is deliberately excluded here since LoanLogSheet
+  // already increments/decrements this same counter on its own; including
+  // it too would just double-count that one case.
+  let anyOwnSheetOpen = $derived(detailGoal != null || newGoalOpen || closedOpen);
+  $effect(() => {
+    if (!anyOwnSheetOpen) return;
+    sheetPageCount.update((n) => n + 1);
+    return () => sheetPageCount.update((n) => n - 1);
   });
 
   function fmtDate(d) {
