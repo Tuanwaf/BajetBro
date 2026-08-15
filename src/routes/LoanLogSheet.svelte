@@ -5,6 +5,7 @@
   import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
   import { sheetPageCount } from '../lib/viewStore.js';
+  import { swipeBack } from '../lib/swipeBack.js';
 
   let { open, onClose } = $props();
 
@@ -84,6 +85,7 @@
   async function deleteLoan(id) {
     await db.loans.delete(id);
     confirmDeleteId = null;
+    editingId = null;
     showToast('Removed');
   }
 
@@ -93,7 +95,7 @@
   }
 </script>
 
-<div class="sheet-page" class:open>
+<div class="sheet-page" class:open use:swipeBack={onClose}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -125,10 +127,21 @@
             <input class="note-input" bind:value={editPerson} placeholder="Person's name" />
             <input class="note-input num" bind:value={editAmount} inputmode="decimal" placeholder="0.00" />
             <input class="note-input" bind:value={editNote} placeholder="Note (optional)" />
-            <div style="display:flex; gap:8px;">
-              <button class="io-btn" style="flex:1;" onclick={() => (editingId = null)}>Cancel</button>
-              <button class="save-btn" style="flex:1; margin-top:0;" onclick={commitEdit}>Save</button>
-            </div>
+            {#if confirmDeleteId === l.id}
+              <div class="del-confirm">
+                <span>Delete this loan with {l.person}?</span>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                  <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteId = null)}>Cancel</button>
+                  <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteLoan(l.id)}>Delete</button>
+                </div>
+              </div>
+            {:else}
+              <div style="display:flex; gap:8px;">
+                <button class="io-btn" style="flex:1;" onclick={() => (editingId = null)}>Cancel</button>
+                <button class="save-btn" style="flex:1; margin-top:0;" onclick={commitEdit}>Save</button>
+              </div>
+              <button class="io-btn danger" style="margin-top:8px;" onclick={() => (confirmDeleteId = l.id)}>Delete loan</button>
+            {/if}
           </div>
         {:else}
           <div class="tx-row">
@@ -140,19 +153,7 @@
             <button class="icon-btn small" aria-label="Edit loan" onclick={() => startEdit(l)}>
               <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
             </button>
-            <button class="icon-btn small" aria-label="Delete loan" onclick={() => (confirmDeleteId = l.id)}>
-              <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
           </div>
-          {#if confirmDeleteId === l.id}
-            <div class="del-confirm">
-              <span>Delete this loan with {l.person}?</span>
-              <div style="display:flex; gap:8px; margin-top:8px;">
-                <button class="io-btn" style="flex:1;" onclick={() => (confirmDeleteId = null)}>Cancel</button>
-                <button class="save-btn danger" style="flex:1; margin-top:0;" onclick={() => deleteLoan(l.id)}>Delete</button>
-              </div>
-            </div>
-          {/if}
         {/if}
       {:else}
         <p class="hint" style="margin:2px 0;">No loans logged yet.</p>
@@ -197,7 +198,14 @@
   .tx-date { font-size: 11px; color: var(--dim); font-family: var(--mono); margin-top: 2px; }
   .tx-amt { font-weight: 600; }
   .icon-btn.small { width: 28px; height: 28px; }
-  .icon-btn.small + .icon-btn.small { margin-left: 6px; }
   .tx-edit { padding: 10px 0; border-bottom: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 8px; }
   .tx-edit:last-child { border-bottom: none; }
+  /* Same red treatment .save-btn.danger already uses elsewhere (app.css) --
+     .io-btn has no danger variant of its own yet. Matches Settings' Delete
+     category/label button: moved off the row and into the edit panel
+     itself, so a rare action isn't sitting as a permanent icon button. */
+  .io-btn.danger {
+    background: var(--red);
+    color: #2a0709;
+  }
 </style>

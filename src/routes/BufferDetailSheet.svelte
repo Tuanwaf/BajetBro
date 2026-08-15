@@ -7,6 +7,7 @@
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
+  import { swipeBack } from '../lib/swipeBack.js';
 
   let { open, label, onClose } = $props();
 
@@ -100,7 +101,6 @@
     if (!amt) return showToast('Enter an amount first');
     const paidInput = parseFloat(editPaid) || 0;
     const original = month.extras[editingIdx];
-    const oldFull = fullOf(original);
     const paid = editPaidAbsolute
       ? Math.min(Math.max(paidInput, 0), amt) // direct override of the total
       : Math.min(Math.max((original.reimbursed || 0) + paidInput, 0), amt); // stacks onto what's already recorded
@@ -118,7 +118,11 @@
       );
       await writeCategories(cats);
       if (destKey === 'saving') await adjustPot(newNet);
-      if (original.bankId) await adjustBankBalance(original.bankId, oldFull - amt);
+      // Compare NET debits (original.actual is already stored net -- see
+      // fullOf's comment above), not gross amounts -- a change in how much
+      // of this entry is paid back moves real money back into the bank
+      // too, not just the budget's actual figure.
+      if (original.bankId) await adjustBankBalance(original.bankId, round2((original.actual || 0) - newNet));
       if (original.bankId) {
         const consumption = await reconcileGoalReserve(original.bankId, original.reserveConsumption);
         if (consumption.length || original.reserveConsumption?.length) {
@@ -140,7 +144,8 @@
       i === editingIdx ? { ...e, actual: newNet, reimbursed: paid || undefined, note: note || undefined, name: newLabel } : e
     );
     await db.months.update(month.key, { extras });
-    if (original.bankId) await adjustBankBalance(original.bankId, oldFull - amt);
+    // Compare NET debits, not gross amounts -- see the branch above for why.
+    if (original.bankId) await adjustBankBalance(original.bankId, round2((original.actual || 0) - newNet));
     // Re-derive this entry's effect on a goal's reserve against its NEW
     // amount (see AddExpenseSheet's overspend warning for how it first got
     // there) -- undoes whatever the OLD amount had consumed, then consumes
@@ -166,7 +171,11 @@
   async function deleteEntry(x) {
     const extras = month.extras.filter((_, i) => i !== x.idx);
     await db.months.update(month.key, { extras });
-    if (x.e.bankId) await adjustBankBalance(x.e.bankId, fullOf(x.e));
+    // Only the still-outstanding net debit (x.e.actual), not fullOf(x.e) --
+    // any already-reimbursed portion was credited back to the bank at the
+    // time it was marked paid back, so re-crediting the full gross amount
+    // here would pay that slice back twice.
+    if (x.e.bankId) await adjustBankBalance(x.e.bankId, x.e.actual || 0);
     // Give back whatever this entry had eaten into a goal's reserve --
     // it's not spending anymore once the entry itself is gone.
     if (x.e.bankId) await reconcileGoalReserve(x.e.bankId, x.e.reserveConsumption);
@@ -187,7 +196,7 @@
   }
 </script>
 
-<div class="sheet-page" class:open>
+<div class="sheet-page" class:open use:swipeBack={onClose}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

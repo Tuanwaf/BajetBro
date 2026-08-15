@@ -1,16 +1,20 @@
 <script>
-  import { currentMonth, userName } from '../lib/stores.js';
+  import { currentMonth, userName, goals as goalsStore } from '../lib/stores.js';
   import {
     computeBufferActual,
     computeBankFreeTotal,
     computeBufferPlannedLive,
     computePlannedTotalLive,
     computeReimbursedTotal,
+    allocIsReserved,
+    spendRM,
+    inCycle,
     round2,
   } from '../lib/calc.js';
   import { fmt, formatDate } from '../lib/format.js';
-  import { BUFFER_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR, GOALS_ROW_COLOR } from '../lib/constants.js';
   import db from '../lib/db.js';
+  import { currentView } from '../lib/viewStore.js';
   import CategoryDetailSheet from './CategoryDetailSheet.svelte';
   import BufferDetailSheet from './BufferDetailSheet.svelte';
   import ReimbursementsSheet from './ReimbursementsSheet.svelte';
@@ -46,6 +50,62 @@
   let plannedTotal = $derived(month ? computePlannedTotalLive(month, liveTotal) : 0);
   let reimbursedTotal = $derived(month ? computeReimbursedTotal(month) : 0);
   let reimburseOpen = $state(false);
+
+  // Whether one goal allocation/spend (dated, not month-scoped like
+  // categories) belongs to THIS cycle -- see calc.js's inCycle/cycleStartOf
+  // (moved there once computeGoalGivenTotal needed the exact same cycle-
+  // boundary logic for Monthly Log/End Month's own "Spent" figure).
+  function inCurrentCycle(date, entryCycleMonth) {
+    return inCycle(month, date, entryCycleMonth);
+  }
+
+  // What actually shrank Buffer's own pool this cycle, made visible --
+  // liveTotal (feeding bufferPlanned above) drops the instant a goal
+  // reserves money in a bank OR gives money away for good, but neither
+  // ever showed up as a line item anywhere near Buffer. One combined row
+  // per goal: reserved money is still yours (just locked away), given
+  // money is real spending -- shown together since a goal can do both in
+  // the same cycle. Every OPEN goal is listed regardless of whether it had
+  // activity this cycle (RM0 is still useful information -- "this goal
+  // exists, nothing happened to it yet" -- not something to hide); closed
+  // goals are the only ones left out.
+  let goalList = $derived($goalsStore ?? []);
+  let goalActivity = $derived.by(() => {
+    if (!month) return [];
+    return goalList
+      .filter((g) => !g.closed)
+      .map((g) => {
+        let reserved = 0;
+        let given = 0;
+        for (const a of g.allocations || []) {
+          // A `starting` allocation is what the goal already had before it
+          // was ever tracked -- not something that happened this cycle,
+          // even when it's dated/cycleMonth-tagged as the current one (a
+          // goal created today with a starting balance would otherwise
+          // show up here as if you'd just contributed it).
+          if (a.starting) continue;
+          if (!inCurrentCycle(a.date, a.cycleMonth)) continue;
+          if (allocIsReserved(g, a)) reserved = round2(reserved + (a.amount || 0));
+          else given = round2(given + (a.amount || 0));
+        }
+        for (const s of g.spends || []) {
+          if (!inCurrentCycle(s.date, s.cycleMonth)) continue;
+          given = round2(given + spendRM(g, s));
+        }
+        return { id: g.id, label: g.label, color: g.color, reserved, given };
+      });
+  });
+  function goalNote(g) {
+    const parts = [];
+    if (g.reserved > 0.005) parts.push(`Reserved RM ${fmt(g.reserved)}`);
+    if (g.given > 0.005) parts.push(`Given RM ${fmt(g.given)}`);
+    return parts.length ? parts.join(' · ') : 'No activity yet';
+  }
+  // Same shape as the Buffer row's own total -- one number for the
+  // collapsed row, expands (goalsOpen) to the per-goal breakdown below it,
+  // exactly like bufferGroups/.buffer-sub already does.
+  let goalsTotal = $derived(round2(goalActivity.reduce((s, g) => s + g.reserved + g.given, 0)));
+  let goalsOpen = $state(false);
 
   let bufferOpen = $state(false);
   let bufferLabel = $state(null);
@@ -109,7 +169,7 @@
     </div>
     <div class="card">
       {#each activeBank.transactions.slice(0, 2) as t}
-        <div class="recent-txn-row">
+        <div class="recent-txn-row" onclick={() => (bankTxnSheetOpen = true)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (bankTxnSheetOpen = true)}>
           <span class="dot" style="background:{t.color}"></span>
           <div class="recent-txn-body">
             <span class="recent-txn-note">{t.note}</span>
@@ -188,6 +248,26 @@
         {/if}
       </div>
     </div>
+
+    {#if goalActivity.length}
+      <div class="cat-row" onclick={() => (goalsOpen = !goalsOpen)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (goalsOpen = !goalsOpen)}>
+        <span class="dot" style="background:{GOALS_ROW_COLOR}"></span>
+        <div class="cat-body">
+          <div class="cat-name-row">
+            <span>Goals</span>
+            <span class="cat-amt"><b class="num">RM {fmt(goalsTotal)}</b></span>
+          </div>
+          <span class="cat-note">This cycle · tap to see each goal</span>
+          <div class="buffer-sub" class:open={goalsOpen}>
+            {#each goalActivity as g (g.id)}
+              <div class="item item-link" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); currentView.set('goals'); }} onkeydown={(e) => e.key === 'Enter' && currentView.set('goals')}>
+                <span>{g.label} &rsaquo;</span><b>{goalNote(g)}</b>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 
   <button class="end-month-btn" onclick={onEndMonth}>
@@ -230,7 +310,7 @@
     color: var(--dim);
     padding: 2px;
   }
-  .recent-txn-row { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--stroke); }
+  .recent-txn-row { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--stroke); cursor: pointer; }
   .recent-txn-row:last-child { border-bottom: none; }
   .recent-txn-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .recent-txn-note { font-size: 12.5px; font-weight: 600; color: var(--hi); }
@@ -272,6 +352,7 @@
     border-radius: 16px;
     box-shadow: 3px 3px 0 var(--good);
     padding: 14px 16px;
+    margin-top: 16px;
     margin-bottom: 16px;
     color: var(--hi);
     font-size: 14px;

@@ -1,4 +1,5 @@
 <script>
+  import { get } from 'svelte/store';
   import { currentMonth, template, goals } from '../lib/stores.js';
   import { goalAllocated, goalReserveLeft, goalReserveByBank, goalReached, spendRM, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
@@ -6,7 +7,7 @@
   import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { currentView, openSheetCount } from '../lib/viewStore.js';
-  import { banks as bankPreviewStore, adjustBankBalance, computeBankReserved, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
+  import { banks as bankPreviewStore, focusedBankIndex, adjustBankBalance, computeBankReserved, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
 
   let { open, onClose, intent = null, originRect = null } = $props();
@@ -333,13 +334,6 @@
   let kpCents = $state(0);
   let noteValue = $state('');
 
-  // Which entries need a "Paid from" bank picker -- every expense-mode
-  // category now moves real money through a bank, including goal
-  // contributions/spends (see the redesign: a goal's `type` no longer
-  // decides this -- whether money is reserved or given away is now a
-  // per-contribution choice, see heldInChoice above).
-  let showBankPicker = $derived(!!selectedCatKey);
-
   const MAX_CENTS = 99999999;
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
   let step = $state(1); // 1 = amount, 2 = category + note
@@ -424,10 +418,16 @@
     selectedBufferLabel = null;
     customBufferLabel = '';
     selectedGoalId = null;
-    // Defaults to the main bank -- most entries are through it, and this
-    // stays fixed for the rest of the session even if the Home carousel
-    // gets swiped elsewhere in the meantime.
-    selectedBankId = banksList.find((b) => b.bank.isMain)?.bank.id ?? banksList[0]?.bank.id ?? null;
+    // Defaults to whichever bank card is focused on Home right now -- most
+    // entries are through the account you're already looking at, so this
+    // saves a re-pick almost every time; still just a starting point, freely
+    // changeable via the picker below. Falls back to the main bank (then the
+    // first bank) if the focused index is somehow out of range. Read once
+    // here (not a reactive subscription) since this only needs "whatever it
+    // was the moment this sheet opened" -- swiping the Home carousel while
+    // the sheet is already open shouldn't retroactively change the pick.
+    const focusedBank = banksList[get(focusedBankIndex)];
+    selectedBankId = focusedBank?.bank.id ?? banksList.find((b) => b.bank.isMain)?.bank.id ?? banksList[0]?.bank.id ?? null;
     secondBankId = null;
     heldInChoice = 'same';
     addCcy = 'RM';
@@ -651,7 +651,13 @@
       const room = Math.max(0, goal.target - goalAllocated(goal));
       const applied = Math.min(amt, room);
       if (applied <= 0) return showToast('This goal is already at its target');
-      const allocations = [...(goal.allocations || []), { date: now, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId: heldInBankId ?? undefined }];
+      // heldInBankId is always null/bankId/secondBank here, never undefined
+      // -- storing it as-is (not `?? undefined`, which silently turned a
+      // real "given away" `null` into a dropped key once exported/reimported
+      // as JSON) keeps it an explicit null, matching what allocIsReserved's
+      // own `'heldInBankId' in a` check expects a "given away" allocation to
+      // look like.
+      const allocations = [...(goal.allocations || []), { date: now, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId }];
       await db.goals.update(goal.id, { allocations });
       // heldInBankId === bankId ("same"): the debit and credit would be the
       // exact same bank canceling out, so skip both writes entirely --
@@ -782,7 +788,26 @@
       </div>
     <div class="add-scroll">
     {#if addMode === 'expense'}
-    <div class="field-lbl" style="margin-top:2px;">Category</div>
+    <!-- Shown before Category (and defaulted from Home's focused card, see
+       reset() in the script) rather than only appearing once a category is
+       picked -- most entries are through whichever bank you're already
+       looking at, so this is chosen or confirmed first, not hunted for
+       afterward. Hidden for "Spend on a goal" -- that one has its own
+       reserve-filtered picker further down instead, since only certain
+       banks actually hold that specific goal's money. -->
+    {#if selectedCatKey !== 'spendgoal' && banksList.length}
+      <div class="field-lbl" style="margin-top:2px;">{selectedCatKey === 'reimburse' ? 'Credited to' : 'Paid from'}</div>
+      <div class="chip-scroll">
+        {#each banksList as b (b.bank.id)}
+          <button class="chip" class:selected={selectedBankId === b.bank.id} onclick={() => (selectedBankId = b.bank.id)}>
+            <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+            {b.bank.name}
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    <div class="field-lbl">Category</div>
     <div class="dropdown-wrap">
       <button class="dropdown-btn" onclick={() => (categoryDropdownOpen = !categoryDropdownOpen)}>
         {#if selectedCategoryOption}
@@ -829,16 +854,6 @@
           <span class="lo">only bank still holding this goal's reserve</span>
         </div>
       {/if}
-    {:else if showBankPicker && banksList.length}
-      <div class="field-lbl">{selectedCatKey === 'reimburse' ? 'Credited to' : 'Paid from'}</div>
-      <div class="chip-scroll">
-        {#each banksList as b (b.bank.id)}
-          <button class="chip" class:selected={selectedBankId === b.bank.id} onclick={() => (selectedBankId = b.bank.id)}>
-            <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
-            {b.bank.name}
-          </button>
-        {/each}
-      </div>
     {/if}
 
     {#if selectedCatKey === 'buffer'}

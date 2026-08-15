@@ -14,20 +14,23 @@ import { GOAL_COLORS } from './constants.js';
 // commitments step (which holds its categories as local state until the
 // user finishes the whole flow, not persisted per-edit like Settings does)
 // can build the same shape without a premature db.template write.
-export function buildCategory(existingCategories, name) {
+export function buildCategory(existingCategories, name, color) {
   const trimmed = name.trim();
   if (!trimmed) return null;
   const baseKey = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'category';
   let key = baseKey;
   let n = 2;
   while (existingCategories.some((c) => c.key === key)) key = `${baseKey}-${n++}`;
+  // Explicit color (Settings/OnboardingFlow now offer a picker) wins;
+  // falling back to the old auto-pick-an-unused-one only when none was
+  // given, so callers that predate the picker keep behaving the same.
   const usedColors = new Set(existingCategories.map((c) => c.color));
-  const color = GOAL_COLORS.find((c) => !usedColors.has(c)) || GOAL_COLORS[existingCategories.length % GOAL_COLORS.length];
-  return { key, name: trimmed, color, planned: 0 };
+  const resolvedColor = color || GOAL_COLORS.find((c) => !usedColors.has(c)) || GOAL_COLORS[existingCategories.length % GOAL_COLORS.length];
+  return { key, name: trimmed, color: resolvedColor, planned: 0 };
 }
 
-export async function addCategory(tmpl, month, name) {
-  const newCat = buildCategory(tmpl.categories, name);
+export async function addCategory(tmpl, month, name, color) {
+  const newCat = buildCategory(tmpl.categories, name, color);
   if (!newCat) return null;
   await db.template.put({ ...tmpl, categories: [...tmpl.categories, newCat] });
   // buildCategory() returns a template-shaped category (no `actual` --
@@ -58,6 +61,41 @@ export async function renameCategory(tmpl, month, index, name) {
     await db.months.update(month.key, { categories: updatedMonth });
   }
   return true;
+}
+
+// Same write shape as renameCategory/updateCategoryPlanned -- template plus
+// the current open month's own copy (if any), keyed by `key` so an
+// in-progress month's categories stay in sync with a template edit.
+export async function recolorCategory(tmpl, month, index, color) {
+  const key = tmpl.categories[index].key;
+  const updatedTemplate = tmpl.categories.map((c, i) => (i === index ? { ...c, color } : c));
+  await db.template.put({ ...tmpl, categories: updatedTemplate });
+  if (month) {
+    const updatedMonth = month.categories.map((c) => (c.key === key ? { ...c, color } : c));
+    await db.months.update(month.key, { categories: updatedMonth });
+  }
+}
+
+// Swaps a category with its neighbor one slot up (-1) or down (+1), in both
+// the template AND the current open month's own copy -- Home renders
+// month.categories in ITS OWN stored order, not the template's, so
+// reordering only the template would silently not move anything on Home
+// until the next cycle. Re-sorts the month's array by the template's NEW
+// key order rather than swapping indices directly there, since a month's
+// categories can already differ in shape from the template's (extra
+// per-entry fields like `actual`/`transactions`) even though the set of
+// keys always matches.
+export async function reorderCategory(tmpl, month, index, direction) {
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= tmpl.categories.length) return;
+  const reordered = tmpl.categories.slice();
+  [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+  await db.template.put({ ...tmpl, categories: reordered });
+  if (month) {
+    const keyOrder = reordered.map((c) => c.key);
+    const sortedMonthCats = keyOrder.map((k) => month.categories.find((c) => c.key === k)).filter(Boolean);
+    await db.months.update(month.key, { categories: sortedMonthCats });
+  }
 }
 
 export async function updateCategoryPlanned(tmpl, month, index, value) {

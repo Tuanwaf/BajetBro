@@ -4,7 +4,7 @@ import App from './App.svelte';
 import db from './lib/db.js';
 import { seedIfNeeded } from './lib/seed.js';
 import { initPersonalizationFlags } from './lib/personalization.js';
-import { seedBanksIfNeeded, backfillLegacyBankTags } from './lib/bankPreviewStore.js';
+import { seedBanksIfNeeded, backfillLegacyBankTags, backfillSalaryCredit } from './lib/bankPreviewStore.js';
 // Guided tour is disabled for now -- see the commented-out block below.
 // import { startTour } from './lib/tour.js';
 import { initInstallPrompt, isStandalone } from './lib/installPrompt.js';
@@ -86,6 +86,7 @@ async function init() {
   await initPersonalizationFlags(db);
   await seedBanksIfNeeded();
   await backfillLegacyBankTags();
+  await backfillSalaryCredit();
 
   // Guided tour is disabled for now -- revisit later if still wanted.
   // The tour now only covers the dashboard/settings/goals/history -- the

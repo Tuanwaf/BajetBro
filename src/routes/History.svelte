@@ -1,7 +1,7 @@
 <script>
   import { closedMonths, currentMonth, goals } from '../lib/stores.js';
-  import { computeBufferActual, computeSpentTotal, computeBankFreeTotal, allocIsReserved, spendRM, round2 } from '../lib/calc.js';
-  import { banks as bankPreviewStore } from '../lib/bankPreviewStore.js';
+  import { computeBufferActual, computeSpentTotal, computeBankFreeTotal, allocIsReserved, spendRM, inCycle, round2 } from '../lib/calc.js';
+  import { banks as bankPreviewStore, computeBankActivity, computeBankReservedAsOf } from '../lib/bankPreviewStore.js';
 
   function groupExtras(extras) {
     const map = new Map();
@@ -9,15 +9,229 @@
     return [...map.entries()].map(([name, total]) => ({ name, total }));
   }
   import { fmt, formatDate } from '../lib/format.js';
-  import { BUFFER_COLOR } from '../lib/constants.js';
+  import { BUFFER_COLOR, getCardDesign, cardBorderColor } from '../lib/constants.js';
+  import BankIcon from '../lib/components/BankIcon.svelte';
+  import CardPattern from '../lib/components/CardPattern.svelte';
 
   let closed = $derived($closedMonths ?? []);
   let month = $derived($currentMonth);
   let goalList = $derived($goals ?? []);
+  let banksList = $derived($bankPreviewStore ?? []);
   // The real, live "how much do I actually have" figure -- see
   // computeBankFreeTotal's comment in calc.js. Used below only for the
   // current (still-open) month's Monthly-log delta -- see allMonths.
   let liveTotal = $derived(computeBankFreeTotal($bankPreviewStore));
+  // Money set aside for goals right now, across every bank -- same live,
+  // not-month-scoped snapshot bankBreakdown's own per-bank cards already
+  // use (a goal reservation has no per-month history of its own, so
+  // there's nothing more precise to show for a closed month anyway).
+  let totalReserved = $derived(round2(banksList.reduce((s, b) => s + (b.reserved || 0), 0)));
+
+  // Chronological order (closed months by key, then the current month
+  // last) -- needed to walk a bank's live balance backward to what it held
+  // at the START of any given month, since bankBreakdown below wants a
+  // per-bank echo of the overall row's own "Income" (a rolled-forward
+  // starting total, not this month's fresh activity) -- see
+  // bankStartingBalance.
+  let monthsChron = $derived([...closed].sort((a, b) => a.key.localeCompare(b.key)).concat(month ? [month] : []));
+
+  // The TRUE net change to a bank's real balance for one month -- every
+  // entry computeBankActivity returns already corresponds 1:1 to a real
+  // adjustBankBalance call (see bankPreviewStore.js), including the
+  // `neutral` ones (transfers, a goal reserved in a DIFFERENT bank) --
+  // `neutral` only means "don't count this in the Income/Spending
+  // headline stats," not "this didn't really move the balance." Summing
+  // computeBankActivity's own `income`/`spending` totals would silently
+  // drop every transfer, which is exactly the gap that made Start/Spent
+  // not reconcile against the real balance -- summing the raw entries by
+  // their own `income` flag instead counts every real movement once.
+  //
+  // `+ e.reimbursed` on top of that: marking a category/buffer entry paid
+  // back (CategoryDetailSheet/BufferDetailSheet) credits the bank for
+  // real (see their commitEdit/saveEdit), but the entry itself still shows
+  // its original gross `amount` with no separate record of that credit --
+  // there's no second dated entry for it, just a `reimbursed` field bolted
+  // onto the same one. Without adding it back here, a reimbursed spend
+  // would look like it still drained the full gross amount, understating
+  // Start by exactly what got credited back. This assumes the credit
+  // landed in the same month as the original entry, which holds for the
+  // common case (spent and got paid back within the same still-open
+  // cycle) but can't be exact for one reimbursed in a LATER cycle than the
+  // original spend -- the data model has no separate timestamp for when
+  // the "paid back" edit itself happened, only the entry's original date.
+  function bankNetMovement(month, bankId) {
+    const activity = computeBankActivity(month, goalList, bankId);
+    return round2(activity.transactions.reduce((s, e) => s + (e.income ? e.amount : -e.amount) + (e.reimbursed || 0), 0));
+  }
+
+  // A bank's balance at the START of a given month -- same idea as the
+  // whole pool's own `startingBalance` (the rolled-forward total before
+  // that cycle's own activity), reconstructed per bank since a bank's
+  // balance is only ever stored as one live "now" number, never a
+  // per-month snapshot. Works backward from the bank's CURRENT live
+  // balance, undoing every month's own net movement from the target month
+  // through to now.
+  function bankStartingBalance(row, bankId, liveBalance) {
+    const idx = monthsChron.findIndex((mo) => mo.key === row.key);
+    if (idx === -1) return liveBalance;
+    let net = 0;
+    for (let i = idx; i < monthsChron.length; i++) net += bankNetMovement(monthsChron[i], bankId);
+    return round2(liveBalance - net);
+  }
+
+  // A bank's balance at the END of a given month -- same backward walk as
+  // bankStartingBalance, just stopping one month later (undoing everything
+  // AFTER this row, not including it). For the current/open row that's
+  // simply the bank's live balance right now, since there's nothing after
+  // it to undo yet.
+  function bankEndingBalance(row, bankId, liveBalance) {
+    const idx = monthsChron.findIndex((mo) => mo.key === row.key);
+    if (idx === -1) return liveBalance;
+    let net = 0;
+    for (let i = idx + 1; i < monthsChron.length; i++) net += bankNetMovement(monthsChron[i], bankId);
+    return round2(liveBalance - net);
+  }
+
+  // Per-bank breakdown for one Monthly-log row: Start (see
+  // bankStartingBalance) + this month's own Spending (computeBankActivity
+  // already gives exactly this). For the CURRENT month, every existing
+  // bank shows even with zero activity yet -- that's the whole point while
+  // testing/setting one up, you want to see it listed before you've logged
+  // anything through it. A closed month instead only lists banks that had
+  // activity right then -- a bank added later in the app's life didn't
+  // exist yet in an old month, so it's left out rather than shown with a
+  // meaningless backward-extrapolated number.
+
+  // Whether a month's category spending is itemized completely enough for
+  // the per-bank breakdown below to mean anything. Some real months in this
+  // app's own history (tracked before multi-bank -- or, further back,
+  // before this app at all, just carried forward as a manual total) have a
+  // category's `actual` with few or no matching `transactions` entries --
+  // that untracked slice has no bankId to attribute to any specific bank.
+  // bankStartingBalance/bankNetMovement only ever see the ITEMIZED slice,
+  // so for a month like this the "per bank" reconstruction silently treats
+  // the untracked spending as if it never happened to any bank's real
+  // balance -- which is wrong, not just incomplete, since it makes an old
+  // month's Start look inflated by exactly however much went untracked.
+  // Rather than show a number that's actively misleading, the per-bank
+  // section is skipped entirely for a month that fails this check (see the
+  // markup) -- Income/Spent at the top of the row are unaffected, since
+  // those come straight from the month's own recorded totals, not this
+  // reconstruction.
+  function monthHasCompleteBankTagging(month) {
+    for (const c of month.categories || []) {
+      const trackedNet = round2(
+        (c.transactions || []).reduce((s, t) => s + round2((t.amount || 0) - (t.reimbursed || 0)), 0)
+      );
+      if (Math.abs(trackedNet - round2(c.actual || 0)) > 0.01) return false;
+    }
+    return true;
+  }
+
+  function bankBreakdown(row) {
+    return banksList
+      .map((b) => {
+        const activity = computeBankActivity(row.raw, goalList, b.bank.id);
+        const additionalIncome = round2(
+          (row.raw.additionalIncomeLog || []).reduce((s, e) => (e.bankId === b.bank.id ? s + (e.amount || 0) : s), 0)
+        );
+        // Transfers split by direction, not netted -- netting them together
+        // would hide an "in" and an "out" that both happened this month
+        // behind a single number. Neither side folds into Start's own
+        // income bolt-on (see startIncoming below) -- your own money moving
+        // between your own banks was never income, just relocating; both
+        // directions instead sit together under "Sent" (the out amount as
+        // its headline figure, the in amount as its own dim sub-line,
+        // mirroring how Spent shows its own goals sub-line), so a transfer
+        // is trackable as exactly what it is rather than quietly inflating
+        // how much Start looks like it grew from real income this cycle.
+        const transferIn = round2(
+          activity.transactions.filter((e) => e.source?.kind === 'transfer' && e.income).reduce((s, e) => s + e.amount, 0)
+        );
+        const transferOut = round2(
+          activity.transactions.filter((e) => e.source?.kind === 'transfer' && !e.income).reduce((s, e) => s + e.amount, 0)
+        );
+        // The dedicated "Paid back to you" quick-add (AddExpenseSheet's
+        // `reimburse` branch) -- genuinely new money landing in this bank,
+        // same as Additional income/a transfer-in, so it folds into Start
+        // the same way. NOT the same thing as marking an existing
+        // category/buffer entry paid back (that one only reduces Spending
+        // and restores Balance -- see bankNetMovement's comment -- it was
+        // never really new income, just an expense reversing itself).
+        const reimbursementsReceived = round2(
+          (row.raw.reimbursements || []).reduce((s, r) => (r.bankId === b.bank.id ? s + (r.amount || 0) : s), 0)
+        );
+        // Salary (+ bonus) landing at cycle start (see EndMonthSheet) is the
+        // same kind of credit as Additional income/a reimbursement -- real
+        // money that showed up in this bank early in the cycle, which the
+        // overall row's own "Income" figure already counts as part of this
+        // cycle's total. computeBankActivity's salaryCredit entry makes
+        // bankNetMovement/bankStartingBalance correctly see it (so Balance
+        // and every OTHER month's own reconstruction stay right), but that
+        // same visibility means it also gets subtracted out of trueStart
+        // below along with everything else this cycle -- so it has to be
+        // added back here too, exactly like additionalIncome/
+        // reimbursementsReceived already are, or Start would understate
+        // this bank's true starting figure by the whole salary amount.
+        const salaryCredited =
+          row.raw.salaryCredit && row.raw.salaryCredit.bankId === b.bank.id ? row.raw.salaryCredit.amount || 0 : 0;
+        // Same shape as the overall row's own "Income RM X +Y": the base
+        // number is fully inclusive (bankStartingBalance is the balance
+        // BEFORE any of this cycle's own activity, including this), and the
+        // +Y bolt-on is a decorative breakdown of how much of that total
+        // came in mid-cycle as genuine income -- not something to add again
+        // by hand. Deliberately excludes transferIn (see its own comment
+        // above) -- a transfer is real money that moved, so it's still
+        // folded into trueStart/trueEnd's own backward reconstruction
+        // (bankNetMovement counts every real movement regardless of the
+        // neutral flag), it's just not counted as INCOME the way this
+        // bolt-on's color/framing implies.
+        //
+        // Fixed deposit AND goal-reserved money are both subtracted out of
+        // both Start and Balance -- computeBankFreeTotal (what Income is
+        // ultimately anchored to, via adjustCycleBaseline and EndMonthSheet)
+        // excludes both the exact same way: locked money and money already
+        // earmarked for a goal are neither one "free." Reserved gets its own
+        // POINT-IN-TIME value for each side, though -- unlike Fixed deposit
+        // (a bare field with no history of its own, so it really can only
+        // ever be today's value), a goal reservation is dated, so
+        // computeBankReservedAsOf can answer "how much was reserved as of
+        // the START vs. the END of this specific row" separately. Using a
+        // single current snapshot for both sides (the old approach) made a
+        // reservation made mid-cycle look like it had already been reserved
+        // before that cycle even began, understating that row's Start by
+        // exactly the reserved amount -- which is exactly what threw off a
+        // manual "sum every bank's Start" check against the real Income
+        // figure. reservedAtStart uses the PREVIOUS row's own key as its
+        // cutoff (nothing before the very first tracked month), so a
+        // reservation dated inside THIS row's own cycle is correctly
+        // excluded from Start but still included in Balance.
+        const idx = monthsChron.findIndex((mo) => mo.key === row.key);
+        const prevRowKey = idx > 0 ? monthsChron[idx - 1].key : null;
+        const reservedAtStart = prevRowKey ? computeBankReservedAsOf(goalList, b.bank.id, prevRowKey) : 0;
+        const reservedAtEnd = computeBankReservedAsOf(goalList, b.bank.id, row.key);
+        const fixedDeposit = b.fixedDeposit || 0;
+        const lockedStart = round2(fixedDeposit + reservedAtStart);
+        const lockedEnd = round2(fixedDeposit + reservedAtEnd);
+        const trueStart = round2(bankStartingBalance(row, b.bank.id, b.balance) - lockedStart);
+        const trueEnd = round2(bankEndingBalance(row, b.bank.id, b.balance) - lockedEnd);
+        const startIncoming = round2(additionalIncome + reimbursementsReceived + salaryCredited);
+        return {
+          id: b.bank.id,
+          bank: b.bank,
+          startBalance: round2(trueStart + startIncoming),
+          startIncoming,
+          endBalance: trueEnd,
+          fixedDeposit,
+          reserved: reservedAtEnd,
+          transferOut,
+          transferIn,
+          spending: activity.spending,
+          hasActivity: activity.income > 0 || activity.spending > 0 || transferIn !== 0 || transferOut !== 0,
+        };
+      })
+      .filter((b) => b.hasActivity || row.current);
+  }
 
   // Daily spending -- browsed one WEEK at a time (7 bars, prev/next
   // arrows), covering every month ever tracked (closed + current), never
@@ -61,6 +275,12 @@
     }
     for (const g of goalList) {
       for (const a of g.allocations || []) {
+        // A `starting` allocation is what the goal already had before it
+        // was ever tracked here -- not a real spend that happened on that
+        // date, even for one marked "given away" (see the New Goal sheet's
+        // "Already given away" option). Counting it would inflate a day's
+        // spending with money that was never really given away *today*.
+        if (a.starting) continue;
         if (allocIsReserved(g, a) || a.amount <= 0) continue;
         add(a.date, a.amount, a.note || `Given to ${g.label}`, g.color);
       }
@@ -159,11 +379,32 @@
     );
   });
 
+  // Money given away to (or spent out of) a goal this cycle -- real,
+  // permanent spending exactly like a category/buffer expense, but the
+  // goal it came from has no idea it should show up here on its own (goals
+  // are a separate top-level table, never nested inside `month`). One
+  // slice per goal (its own color) rather than a single lump, same as
+  // every category already gets its own slice -- mirrors this figure's
+  // job (a per-source breakdown of where "Spent" came from).
+  function goalGivenThisCycle(g) {
+    let total = 0;
+    for (const a of g.allocations || []) {
+      if (a.starting || allocIsReserved(g, a)) continue;
+      if (!inCycle(month, a.date, a.cycleMonth)) continue;
+      total += a.amount || 0;
+    }
+    for (const s of g.spends || []) {
+      if (!inCycle(month, s.date, s.cycleMonth)) continue;
+      total += spendRM(g, s);
+    }
+    return round2(total);
+  }
   let ringItems = $derived.by(() => {
     if (!month) return [];
     const items = month.categories
       .map((c) => ({ name: c.name, color: c.color, spent: c.actual }))
       .concat([{ name: 'Buffer', color: BUFFER_COLOR, spent: computeBufferActual(month) }])
+      .concat(goalList.map((g) => ({ name: g.label, color: g.color, spent: goalGivenThisCycle(g) })))
       .filter((i) => i.spent > 0)
       .sort((a, b) => b.spent - a.spent);
     return items;
@@ -194,6 +435,7 @@
       extras: m.extras,
       reimbursements: m.reimbursements || [],
       current: false,
+      raw: m,
     }));
     if (month) {
       rows.push({
@@ -203,11 +445,12 @@
         bonus: month.bonus || 0,
         additionalIncome: month.additionalIncome || 0,
         startingBalance: month.startingBalance,
-        spend: computeSpentTotal(month),
+        spend: computeSpentTotal(month, goalList),
         categories: month.categories,
         extras: month.extras,
         reimbursements: month.reimbursements || [],
         current: true,
+        raw: month,
       });
     }
     return rows.map((r) => {
@@ -324,6 +567,9 @@
         <div class="name">{m.name}{m.current ? ' · current' : ''}</div>
         <div class="sub2">{m.primaryLabel} RM {fmt(m.primaryValue)}</div>
         <div class="sub2">Spent RM {fmt(m.spend)}</div>
+        {#if m.current && totalReserved > 0}
+          <div class="sub2">Goals RM {fmt(totalReserved)}</div>
+        {/if}
       </div>
       <div class="right">
         <span class="pill" class:good={m.delta >= 0} class:bad={m.delta < 0}>{m.delta >= 0 ? '+' : '-'}RM {fmt(Math.abs(m.delta))}</span>
@@ -340,6 +586,69 @@
           <span>Paid back <b class="num" style="color:var(--good);">+RM {fmt(m.reimbursed)}</b></span>
         {/if}
       </div>
+      {#if !m.current && !monthHasCompleteBankTagging(m.raw)}
+        <p class="hint" style="margin:6px 4px;">Per-bank breakdown isn't available for this month — its spending wasn't tracked per bank at the time.</p>
+      {:else if bankBreakdown(m).length}
+        <div class="bank-figures-group">
+          <div class="detail-hd">Per bank</div>
+          <div class="bank-figure-scroll">
+          {#each bankBreakdown(m) as b (b.id)}
+            {@const design = getCardDesign(b.bank.design)}
+            {@const borderColor = cardBorderColor(b.bank)}
+            <div
+              class="bank-figure-card"
+              style="border-color:{borderColor}; box-shadow:3px 3px 0 {borderColor}; background:{design.bg}; --card-fg:{design.fg}; --card-dim:{design.dim};"
+            >
+              <CardPattern kind={design.pattern} color={design.patternColor} opacity={design.patternOpacity} />
+              <div class="bank-figure-id">
+                <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
+                <div class="bank-figure-name">{b.bank.name}</div>
+              </div>
+              <!-- 3 rows: Start/Spent, Sent/Received, Fixed deposit/Balance --
+                   Received and Fixed deposit used to live as bolt-ons/a
+                   badge elsewhere (a "+X in" sub-line under Sent, a
+                   "locked" badge next to the bank name) -- promoted to
+                   their own stat slots here so every figure this card is
+                   built to reconcile (Start - Sent + Received - Spent =
+                   Balance, with Fixed deposit already baked into
+                   Start/Balance same as Reserved -- see bankBreakdown's own
+                   comment) is equally visible, not tucked into a corner.
+                   Always shown (even at RM 0.00), same as Start/Spent/
+                   Balance already are, so the
+                   3-row shape stays predictable card to card. -->
+              <div class="bank-figure-stats">
+                <div class="bank-figure-stat">
+                  <div class="k">Start</div>
+                  <div class="v num">RM {fmt(b.startBalance)}</div>
+                  {#if b.startIncoming > 0}<div class="v-sub num" style="color:var(--good);">+{fmt(b.startIncoming)}</div>{/if}
+                </div>
+                <div class="bank-figure-stat right">
+                  <div class="k">Spent</div>
+                  <div class="v num" style="color:var(--red);">RM {fmt(b.spending)}</div>
+                  {#if b.reserved > 0}<div class="v-sub num" style="color:var(--gold);">+{fmt(b.reserved)} goals</div>{/if}
+                </div>
+                <div class="bank-figure-stat">
+                  <div class="k">Sent</div>
+                  <div class="v num" style="color:var(--red);">RM {fmt(b.transferOut)}</div>
+                </div>
+                <div class="bank-figure-stat right">
+                  <div class="k">Received</div>
+                  <div class="v num">RM {fmt(b.transferIn)}</div>
+                </div>
+                <div class="bank-figure-stat">
+                  <div class="k">Fixed deposit</div>
+                  <div class="v num" style="color:var(--gold);">RM {fmt(b.fixedDeposit)}</div>
+                </div>
+                <div class="bank-figure-stat right">
+                  <div class="k">Balance</div>
+                  <div class="v num">RM {fmt(b.endBalance)}</div>
+                </div>
+              </div>
+            </div>
+          {/each}
+          </div>
+        </div>
+      {/if}
       {#each m.categories as cat (cat.key)}
         <div class="detail-row">
           <span class="dot" style="background:{cat.color}"></span>
@@ -396,6 +705,133 @@
     color: var(--dim);
     font-size: 11px;
     font-style: italic;
+  }
+  .detail-hd {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--dim);
+    padding: 8px 4px 2px;
+  }
+  /* Label-above-value stat pair, same pattern BankCard.svelte's own
+     Income/Spending row already uses -- unlike an inline "Label RM X" run
+     (.detail-figures' style), each stat gets its own column that can grow
+     independently, so a 4-digit Start next to a 4-digit Spent never
+     squeezes the row into wrapping the way one shared line did.
+
+     One card fills the section's full width at a time (scroll-snap-align
+     below) instead of several narrow ones side by side -- swiping pages to
+     the next bank, same "one at a time" feel as Home's own BankCarousel,
+     rather than a row of small cards competing for space. Height still
+     stays constant regardless of bank count, same reason as before; no
+     touch-action/overscroll-behavior override, same reason as chip-scroll
+     elsewhere in this app (both were tried on other rows and each broke
+     scrolling worse than the problem they were meant to fix). */
+  .bank-figure-scroll {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 2px 2px 6px;
+    scroll-snap-type: x mandatory;
+  }
+  .bank-figure-scroll::-webkit-scrollbar { display: none; }
+  /* Miniature echo of BankCard.svelte's own face -- same design/pattern/
+     border-color language (getCardDesign, cardBorderColor, CardPattern) so
+     a bank reads as the same object here as it does on its own card, just
+     scaled down: no traffic lights, flip, or eye-toggle, since there's no
+     room (or need) for those at this size. */
+  .bank-figure-card {
+    flex-shrink: 0;
+    width: 100%;
+    min-height: 130px;
+    box-sizing: border-box;
+    scroll-snap-align: start;
+    padding: 16px 16px 14px;
+    border: 1.5px solid var(--stroke-2);
+    border-radius: 16px;
+    position: relative;
+    z-index: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    /* Content flows top-to-bottom at its own natural size, not spread to
+       fill the card -- optional per-bank content (the reserved sub-line,
+       Start's income bolt-on) makes card height vary bank to bank, and
+       space-between would stretch that gap unevenly instead of just
+       stacking content from the top. */
+    justify-content: flex-start;
+  }
+  .bank-figure-id {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    min-width: 0;
+  }
+  .bank-figure-name {
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--card-fg, var(--hi));
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 3x2 grid (Start/Spent, Sent/Received, Fixed deposit/Balance) instead of
+     a single space-between row -- reads left-to-right, top-to-bottom as
+     Start - Sent + Received - Spent = Balance (Fixed deposit sits alongside
+     Balance since it's a fixed, single fact about the bank itself, not
+     this cycle's activity, same as Reserved's own bolt-on under Spent),
+     the exact check this card exists to make possible without opening
+     anything else. */
+  .bank-figure-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 8px;
+  }
+  .bank-figure-stat {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .bank-figure-stat.right {
+    text-align: right;
+  }
+  .bank-figure-stat .k {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--card-dim, var(--dim));
+  }
+  .bank-figure-stat .v {
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 2px;
+    color: var(--card-fg, var(--hi));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Additional income/transfer-in stays right on Start, where the money
+     actually landed -- only fixed deposit/goal-reserved (which apply to
+     BOTH Start and Balance identically) moved to the shared footer below. */
+  .bank-figure-stat .v-sub {
+    font-size: 10px;
+    font-weight: 700;
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Same divider .detail-figures uses above it -- separates the per-bank
+     breakdown from the category/extra list that follows. */
+  .bank-figures-group {
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--stroke);
+    margin-bottom: 4px;
   }
 
   .week-nav {

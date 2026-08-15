@@ -13,6 +13,7 @@
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { openAdd } from '../lib/viewStore.js';
+  import { swipeBack } from '../lib/swipeBack.js';
   import { GOAL_COLORS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
@@ -72,6 +73,12 @@
     const spendByMonth = new Map();
     for (const g of goalList) {
       for (const a of g.allocations || []) {
+        // A `starting` allocation is what the goal already had before it
+        // was ever tracked here -- not a contribution that happened in
+        // whatever month it's dated/cycleMonth-tagged as. Counting it
+        // would show a spike on the chart for a month you didn't actually
+        // contribute anything in.
+        if (a.starting) continue;
         if (!a.date) continue;
         // Bucket by the cycle month that was OPEN when this was logged, not
         // the real calendar date it happened to land on -- this app's
@@ -214,6 +221,12 @@
     const entries = [];
     for (const g of goalList) {
       for (const a of g.allocations || []) {
+        // A `starting` allocation is what the goal already had before it
+        // was ever tracked here -- not something that happened on that
+        // date, even though it's stamped with one. Showing it in a
+        // "Recent activity" feed would read as a contribution you just
+        // made, when it's really historical record-keeping.
+        if (a.starting) continue;
         if (!a.date) continue;
         entries.push({ date: a.date, amount: a.amount, desc: allocLabel(a), goalLabel: g.label, goalColor: g.color });
       }
@@ -539,6 +552,10 @@
   let ngStartBalance = $state('');
   // null = not tied to any bank (fully untracked, e.g. cash at home).
   let ngStartBankId = $state(null);
+  // Mutually exclusive with ngStartBankId -- this starting balance was
+  // already spent/given away for good before it was ever tracked here, not
+  // sitting reserved anywhere (see createGoal's allocIsReserved comment).
+  let ngStartGiven = $state(false);
   let startBalanceWarnMsg = $state('');
   let startBalanceConfirmed = $state(false);
   function openNewGoal() {
@@ -549,6 +566,7 @@
     ngRate = '';
     ngStartBalance = '';
     ngStartBankId = null;
+    ngStartGiven = false;
     startBalanceWarnMsg = '';
     startBalanceConfirmed = false;
     newGoalOpen = true;
@@ -588,8 +606,12 @@
           // Tied to a bank: heldInBankId === fromBankId is the same "stays
           // in this bank" shape addgoal already uses, so it's earmarked
           // (shows in that bank's "Reserved for goals") without touching
-          // the balance -- this money was already counted in it.
-          ...(ngStartBankId ? { fromBankId: ngStartBankId, heldInBankId: ngStartBankId } : {}),
+          // the balance -- this money was already counted in it. Given
+          // away: heldInBankId explicitly null (not just omitted) so
+          // allocIsReserved reads it as spent for good, not reserved --
+          // omitting the field entirely would fall back to the goal's old
+          // `type`, which no longer exists on goals created here.
+          ...(ngStartGiven ? { heldInBankId: null } : ngStartBankId ? { fromBankId: ngStartBankId, heldInBankId: ngStartBankId } : {}),
         }]
       : [];
     await db.goals.put({
@@ -728,7 +750,7 @@
 </div>
 
 <!-- ===================== GOAL DETAIL SHEET ===================== -->
-<div class="sheet-page" class:open={detailGoal != null}>
+<div class="sheet-page" class:open={detailGoal != null} use:swipeBack={() => (detailGoalId = null)}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={() => (detailGoalId = null)}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -964,7 +986,7 @@
 </div>
 
 <!-- ===================== NEW GOAL SHEET ===================== -->
-<div class="sheet-page" class:open={newGoalOpen}>
+<div class="sheet-page" class:open={newGoalOpen} use:swipeBack={() => (newGoalOpen = false)}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={() => (newGoalOpen = false)}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -979,19 +1001,21 @@
     <input class="note-input num" placeholder="0.00" inputmode="decimal" bind:value={ngTarget} />
     <div class="field-lbl">Starting balance <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
     <input class="note-input num" placeholder="0.00 — already saved before today" inputmode="decimal" bind:value={ngStartBalance} onchange={() => { startBalanceWarnMsg = ''; startBalanceConfirmed = false; }} />
-    {#if parseFloat(ngStartBalance) > 0 && banksList.length}
-      <div class="field-lbl">Is this already sitting in one of your banks?</div>
+    {#if parseFloat(ngStartBalance) > 0}
+      <div class="field-lbl">Is this still sitting somewhere, or already given away?</div>
       <div class="chip-scroll">
-        <button class="chip ghost" class:selected={ngStartBankId === null} onclick={() => { ngStartBankId = null; startBalanceWarnMsg = ''; }}>Not tied to a bank</button>
+        <button class="chip ghost" class:selected={!ngStartGiven && ngStartBankId === null} onclick={() => { ngStartBankId = null; ngStartGiven = false; startBalanceWarnMsg = ''; }}>Not tied to a bank</button>
         {#each banksList as b (b.bank.id)}
-          <button class="chip" class:selected={ngStartBankId === b.bank.id} onclick={() => { ngStartBankId = b.bank.id; startBalanceWarnMsg = ''; }}>
+          <button class="chip" class:selected={!ngStartGiven && ngStartBankId === b.bank.id} onclick={() => { ngStartBankId = b.bank.id; ngStartGiven = false; startBalanceWarnMsg = ''; }}>
             <BankIcon logo={b.bank.logo} icon={b.bank.icon} name={b.bank.name} color={b.bank.color} size={18} />
             {b.bank.name}
           </button>
         {/each}
+        <button class="chip ghost" class:selected={ngStartGiven} onclick={() => { ngStartGiven = true; ngStartBankId = null; startBalanceWarnMsg = ''; }}>Already given away</button>
       </div>
       <p class="hint" style="margin-top:6px;">
-        {#if ngStartBankId}Earmarks it in {banksList.find((b) => b.bank.id === ngStartBankId)?.bank.name} without touching that bank's balance — it's already counted there. Shows as "Reserved for goals" on that bank's card.
+        {#if ngStartGiven}Already spent/given away for good before today — counts toward this goal's progress, but isn't reserved anywhere and won't show as "Reserved for goals" on any bank.
+        {:else if ngStartBankId}Earmarks it in {banksList.find((b) => b.bank.id === ngStartBankId)?.bank.name} without touching that bank's balance — it's already counted there. Shows as "Reserved for goals" on that bank's card.
         {:else}Not tracked against any bank — just a number to count toward this goal (e.g. cash at home, or an amount you'd rather not tie to a specific account).{/if}
       </p>
     {:else}
@@ -1021,7 +1045,7 @@
 </div>
 
 <!-- ===================== CLOSED GOALS SHEET ===================== -->
-<div class="sheet-page" class:open={closedOpen}>
+<div class="sheet-page" class:open={closedOpen} use:swipeBack={() => (closedOpen = false)}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={() => (closedOpen = false)}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

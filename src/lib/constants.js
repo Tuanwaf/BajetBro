@@ -1,5 +1,10 @@
 export const BUFFER_COLOR = '#e5323b';
 
+// Home's own "Goals this cycle" summary row (see Home.svelte) -- one fixed
+// accent for the row itself, separate from each individual goal's own
+// color (GOAL_COLORS below), which the expanded sub-list still uses.
+export const GOALS_ROW_COLOR = '#e7b34e';
+
 export const BUFFER_LABEL_PRESETS = ['BNPL', 'Zakat', 'Emergency', 'Misc'];
 
 // Palette offered when creating / editing a goal.

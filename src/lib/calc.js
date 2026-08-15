@@ -111,10 +111,79 @@ export function computeCoreActual(month) {
   return round2((month.categories || []).reduce((s, c) => s + (c.actual || 0), 0));
 }
 
+// Earliest real boundary of a cycle -- month.startedAt when present,
+// otherwise the earliest date among its own dated entries (a cycle can
+// start before the 1st of a calendar month, so this predates that field).
+// Shared by anything that needs to decide whether a goal allocation/spend
+// (dated, but not itself nested inside a month the way categories/extras
+// are) belongs to this cycle -- originally Home.svelte's own local
+// `cycleStart`, moved here once computeGoalGivenTotal below needed the same
+// logic too.
+export function cycleStartOf(month) {
+  if (!month) return null;
+  if (month.startedAt) return month.startedAt;
+  const dates = [];
+  for (const cat of month.categories || []) for (const tx of cat.transactions || []) if (tx.date) dates.push(tx.date);
+  for (const e of month.extras || []) if (e.date) dates.push(e.date);
+  for (const e of month.additionalIncomeLog || []) if (e.date) dates.push(e.date);
+  for (const t of month.transfers || []) if (t.date) dates.push(t.date);
+  for (const r of month.reimbursements || []) if (r.date) dates.push(r.date);
+  return dates.length ? dates.reduce((min, d) => (d < min ? d : min)) : null;
+}
+
+// Whether one goal allocation/spend belongs to THIS month's cycle. Never
+// trust a bare calendar-month slice of its date -- a cycle can start before
+// the 1st (see cycleStartOf above), so an entry dated e.g. 31 July can
+// genuinely belong to the August cycle. cycleMonth (stamped at write time,
+// see Goals.svelte) is authoritative when present; only entries logged
+// before that field existed fall back to comparing against cycleStartOf.
+export function inCycle(month, date, entryCycleMonth) {
+  if (entryCycleMonth) return entryCycleMonth === month.key;
+  if (!date) return false;
+  const start = cycleStartOf(month);
+  if (start) return date >= start;
+  return date.slice(0, 7) === month.key;
+}
+
+// Real money given away to (or spent out of) a goal THIS cycle -- a
+// contribution that STAYS reserved (whichever bank it sits in) isn't
+// spending at all, it's still yours, just earmarked; but one given away for
+// good, or actually spent out of an already-reserved balance, permanently
+// left a real bank exactly like a category/buffer expense would.
+// computeCoreActual/computeBufferActual have no idea this ever happens --
+// goals are a separate top-level table, never nested inside `month` -- so
+// this is the piece that was missing from Monthly Log/End Month's own
+// "Spent" figure, even though a bank's own per-bank Spending stat
+// (computeBankActivity) already counted it correctly. A `starting`
+// allocation is what a goal already had before it was ever tracked here,
+// not something that happened this cycle, so it's excluded the same way
+// Home's own goalActivity excludes it.
+export function computeGoalGivenTotal(month, goals) {
+  if (!month) return 0;
+  let total = 0;
+  for (const g of goals || []) {
+    for (const a of g.allocations || []) {
+      if (a.starting) continue;
+      if (allocIsReserved(g, a)) continue;
+      if (!inCycle(month, a.date, a.cycleMonth)) continue;
+      total += a.amount || 0;
+    }
+    for (const s of g.spends || []) {
+      if (!inCycle(month, s.date, s.cycleMonth)) continue;
+      total += spendRM(g, s);
+    }
+  }
+  return round2(total);
+}
+
 // Live total for the current/open month -- computed from line items, not the
 // frozen `recordedTotal` (which is only authoritative for closed months).
-export function computeSpentTotal(month) {
-  return round2(computeCoreActual(month) + computeBufferActual(month));
+// `goals` is optional (defaults to none) so every existing caller that has
+// no goal list handy keeps its old category+buffer-only behavior -- pass it
+// wherever it's available to fold in money given away to a goal this cycle
+// too (see computeGoalGivenTotal above).
+export function computeSpentTotal(month, goals) {
+  return round2(computeCoreActual(month) + computeBufferActual(month) + computeGoalGivenTotal(month, goals));
 }
 
 // Bootstrap-only fallback: this month's own income-minus-spend, for the rare
@@ -209,8 +278,21 @@ export function goalAllocated(g) {
 // existed never set it at all -- those fall back to the goal's old `type`
 // (every pre-redesign "giving" allocation left for good; every "savings"
 // one was reserved), so old data keeps behaving exactly as it always did.
+//
+// `fromBankId` is the tell for telling that legacy case apart from a
+// SECOND, buggy way an allocation can end up with no `heldInBankId` key:
+// AddExpenseSheet's "Add to a goal" used to write `heldInBankId ?? undefined`
+// for a "given away" contribution, which silently turns the real `null`
+// into a dropped key once the object round-trips through JSON (export/
+// import, or just Dexie's own clone). Genuinely old, pre-heldInBankId data
+// never has `fromBankId` either (it predates per-bank tagging entirely) --
+// so an allocation with `fromBankId` set but no `heldInBankId` key is always
+// this bug, never legacy data, and means "given away" (the fix now stores
+// the literal null going forward; this covers whatever already got saved
+// with the key missing before that fix).
 export function allocIsReserved(g, a) {
   if ('heldInBankId' in a) return a.heldInBankId != null;
+  if (a.fromBankId) return false;
   return g.type !== 'giving';
 }
 

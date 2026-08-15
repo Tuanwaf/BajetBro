@@ -25,6 +25,11 @@
     // numbers through just so the preview shows something real.
     income = 0,
     spending = 0,
+    // True once this bank has any real transaction -- see bankHasHistory
+    // in bankPreviewStore.js. Locks the Balance field: past that point,
+    // correcting it should go through a real dated entry (Additional
+    // income, a transfer, etc.), not a silent overwrite with no record.
+    balanceLocked = false,
     // Fires on Enter in the Name field -- the caller decides what that
     // means (commit the sheet, or nothing, during a multi-step flow).
     onEnter = () => {},
@@ -92,7 +97,10 @@
 <input class="note-input" placeholder="e.g. Bank Islam" bind:value={name} onkeydown={(e) => e.key === 'Enter' && onEnter()} />
 
 <div class="field-lbl">Balance</div>
-<input class="note-input" type="number" inputmode="decimal" placeholder="0.00" bind:value={balance} />
+<input class="note-input" type="number" inputmode="decimal" placeholder="0.00" bind:value={balance} disabled={balanceLocked} />
+{#if balanceLocked}
+  <p class="hint" style="margin:0 4px 12px;">Locked -- this bank already has transactions, so Balance can't be hand-edited anymore. Log an Additional income entry (or a transfer) instead to correct it.</p>
+{/if}
 
 <div class="field-lbl">Fixed deposit <span style="text-transform:none; letter-spacing:0; color:var(--dim); font-weight:600;">optional</span></div>
 <input class="note-input" type="number" inputmode="decimal" placeholder="0.00 — locked, can't be spent" bind:value={fixedDeposit} />

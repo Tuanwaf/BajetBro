@@ -87,12 +87,6 @@
   }
 
   function deleteCategoryLocal(index) {
-    const cat = categories[index];
-    if (cat.key === 'saving') {
-      showToast("Saving feeds your Goals — it can't be deleted");
-      confirmDeleteKey = null;
-      return;
-    }
     categories = categories.filter((_, i) => i !== index);
     confirmDeleteKey = null;
   }
@@ -201,15 +195,9 @@
           <span class="dot" style="background:{cat.color}"></span>
           <input class="cat-name-input" value={cat.name} onchange={(e) => renameCategoryLocal(i, e)} />
           <input class="set-amt" value={cat.planned ? cat.planned.toFixed(2) : ''} placeholder="0.00" onchange={(e) => updatePlannedLocal(i, e)} />
-          {#if cat.key === 'saving'}
-            <span class="cat-lock" title="Feeds your Goals pool — protected">
-              <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-            </span>
-          {:else}
-            <button class="cat-del" aria-label="Delete category" onclick={() => (confirmDeleteKey = cat.key)}>
-              <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </button>
-          {/if}
+          <button class="cat-del" aria-label="Delete category" onclick={() => (confirmDeleteKey = cat.key)}>
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 6h16M9 6V4h6v2m-8 0 1 14h8l1-14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
         {#if confirmDeleteKey === cat.key}
           <div class="del-confirm">
@@ -226,7 +214,7 @@
         <button class="io-btn" style="width:auto; padding-left:16px; padding-right:16px; background:var(--good); color:#fff;" onclick={addCategoryLocal}>Add</button>
       </div>
     </div>
-    <p class="hint" style="margin-left:4px;">Saving feeds your Goals pool (it's protected from deletion) — you can adjust the rest anytime in Settings.</p>
+    <p class="hint" style="margin-left:4px;">You can adjust these anytime in Settings.</p>
     <div class="onboarding-actions">
       <button class="icon-btn" aria-label="Back" onclick={() => (step = 2)}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 1 3 7l6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -258,7 +246,5 @@
     padding: 2px 0;
   }
   .cat-name-input:focus { outline: none; border-bottom-color: var(--stroke-2); }
-  .cat-del, .cat-lock { background: none; border: none; padding: 4px; flex-shrink: 0; display: flex; align-items: center; }
-  .cat-del { color: var(--dim); }
-  .cat-lock { color: var(--gold); }
+  .cat-del { background: none; border: none; padding: 4px; flex-shrink: 0; display: flex; align-items: center; color: var(--dim); }
 </style>

@@ -37,3 +37,6 @@ hutang.jpg
 # Personal financial data backups (never commit real figures)
 bajetbro-initial-backup.json
 bajetbro-backup-*.json
+[Bb]ajet*[Dd]ata*.json
+[Bb]ajetbro-[Ii]nitial*.json
+*weird data*.json

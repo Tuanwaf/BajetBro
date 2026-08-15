@@ -4,6 +4,7 @@
   import { currentMonth } from '../lib/stores.js';
   import { banks as bankPreviewStore, moveTransactionsBank, updateTaggedEntry, deleteTaggedEntry } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
+  import { swipeBack } from '../lib/swipeBack.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
 
   let { open, bank, transactions = [], onClose } = $props();
@@ -102,7 +103,7 @@
   });
 </script>
 
-<div class="sheet-page" class:open>
+<div class="sheet-page" class:open use:swipeBack={onClose}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

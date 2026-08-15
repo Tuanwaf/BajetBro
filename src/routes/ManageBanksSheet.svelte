@@ -5,11 +5,25 @@
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { getCardDesign, cardBorderColor, bankTypeLabel } from '../lib/constants.js';
-  import { banks as bankPreviewStore, focusedBankIndex, addBank, updateBank, deleteBank } from '../lib/bankPreviewStore.js';
+  import { banks as bankPreviewStore, focusedBankIndex, addBank, updateBank, deleteBank, bankHasHistory } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
+  import { swipeBack } from '../lib/swipeBack.js';
+  import db from '../lib/db.js';
+  import Sortable from 'sortablejs';
   import BankFormSheet from './BankFormSheet.svelte';
   import BankIcon from '../lib/components/BankIcon.svelte';
   import CardPattern from '../lib/components/CardPattern.svelte';
+
+  // Same SortableJS wrapper as Settings' Fixed categories/Buffer labels --
+  // see that file's comment for why (a hand-rolled Pointer Events drag and
+  // an up/down stepper were both tried and dropped first). The card stack
+  // below is its own tap-to-focus browsing gesture, layering a drag gesture
+  // onto its overlapping cards would fight that -- this is a separate,
+  // plain flat list purely for setting the order, same pattern as those.
+  function sortable(node, options) {
+    const instance = Sortable.create(node, options);
+    return { destroy: () => instance.destroy() };
+  }
 
   // Picking a new focus removes that card from the stack's {#each} and adds
   // a brand-new one to the standalone focused block above (different
@@ -80,6 +94,7 @@
   let formOpen = $state(false);
   let formMode = $state('add');
   let formInitial = $state(null);
+  let balanceLocked = $state(false);
 
   // Same reasoning as Settings.svelte's manageBanksOpen effect -- Bank Form
   // now shares the root document scroll too, so it needs its own top-reset
@@ -135,11 +150,15 @@
   function openAddForm() {
     formMode = 'add';
     formInitial = null;
+    balanceLocked = false;
     formOpen = true;
   }
 
   function openEditForm() {
     formMode = 'edit';
+    // Balance is only ever hand-typed before a bank has any real
+    // transaction -- see bankHasHistory's comment in bankPreviewStore.js.
+    balanceLocked = bankHasHistory(focusedEntry.bank.id);
     formInitial = {
       name: focusedEntry.bank.name,
       balance: focusedEntry.balance,
@@ -172,22 +191,62 @@
     showToast('Removed');
   }
 
+  // banksList is already sorted by `order` (see stores.js's db.banks.orderBy)
+  // -- SortableJS has already moved the dragged row's DOM node by the time
+  // onEnd fires, so this just confirms the same new order back into Dexie,
+  // re-numbering everyone gaplessly same as deleteBank does.
+  async function handleBankReorder(evt) {
+    const { oldIndex, newIndex } = evt;
+    if (oldIndex === newIndex) return;
+    // focusedBankIndex is a plain index into banksList (see its own
+    // declaration above) -- reordering shifts what sits at every index, so
+    // without this the stack's focused card would silently jump to
+    // whichever bank happens to land on the old index instead of staying
+    // on the one that was actually focused.
+    const focusedId = banksList[focusedIndex]?.bank.id;
+    const reordered = banksList.slice();
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+    await Promise.all(reordered.map((entry, i) => db.banks.update(entry.bank.id, { order: i })));
+    if (focusedId) {
+      const newFocusedIndex = reordered.findIndex((entry) => entry.bank.id === focusedId);
+      if (newFocusedIndex !== -1) focusedBankIndex.set(newFocusedIndex);
+    }
+  }
+
+  // This page is meant to just show the cards -- Organize opens as its own
+  // half-height bottom sheet on top of it instead of living inline here, so
+  // the card stack (and its own tap-to-focus/expand gestures) stays the only
+  // thing this page's body is about.
+  let organizeOpen = $state(false);
+
   $effect(() => {
-    if (!open) stackExpanded = false;
+    if (!open) {
+      stackExpanded = false;
+      organizeOpen = false;
+    }
   });
 </script>
 
-<div class="sheet-page" class:open>
+<div class="sheet-page" class:open use:swipeBack={onClose}>
   <div style:display={formOpen ? 'none' : 'contents'}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </button>
     <h2>Your banks</h2>
-    <button class="add-link" onclick={openAddForm}>
-      <svg viewBox="0 0 24 24" fill="none" width="13" height="13"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-      Add
-    </button>
+    <div style="display:flex; gap:6px;">
+      {#if banksList.length > 1}
+        <button class="add-link" aria-label="Organize banks" onclick={() => (organizeOpen = true)}>
+          <svg viewBox="0 0 24 24" fill="none" width="13" height="13"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Organize
+        </button>
+      {/if}
+      <button class="add-link" onclick={openAddForm}>
+        <svg viewBox="0 0 24 24" fill="none" width="13" height="13"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        Add
+      </button>
+    </div>
   </div>
   <div class="sheet-page-body">
     <div class="sheet-body-top">
@@ -305,10 +364,58 @@
   </div>
 </div>
 
+<!-- Organize: a real half-height bottom sheet (position:fixed, slides up
+     over the card stack above) rather than the .sheet-page pattern every
+     other sheet in this app uses -- that pattern deliberately gave up
+     position:fixed (see its own comment) because a nested overflow:auto
+     scroller INSIDE a fixed container is what caused the confirmed
+     hold-during-bounce freeze on iOS. This panel's list has no such
+     scroller in practice (a personal bank list is a handful of rows,
+     .organize-list-wrap's overflow-y:auto is a rare-case safety net, not
+     something that actually needs to scroll day to day) -- if that ever
+     changes, revisit this the same way ManageBanksSheet itself was
+     migrated off .sheet. -->
+<div
+  class="organize-backdrop"
+  class:open={organizeOpen}
+  role="button"
+  tabindex={organizeOpen ? 0 : -1}
+  aria-label="Close organize banks"
+  onclick={() => (organizeOpen = false)}
+  onkeydown={(e) => e.key === 'Enter' && (organizeOpen = false)}
+></div>
+<div class="organize-sheet" class:open={organizeOpen}>
+  <div class="organize-handle"></div>
+  <div class="organize-hd">
+    <h3>Reorder banks</h3>
+    <button class="icon-btn" aria-label="Close" onclick={() => (organizeOpen = false)}>
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <p class="hint" style="margin:0 18px 10px;">Drag to set the order banks appear in around the app.</p>
+  <div class="organize-list-wrap">
+    <div class="sortable-list" use:sortable={{ handle: '.drag-handle', animation: 150, onEnd: handleBankReorder }}>
+      {#each banksList as entry (entry.bank.id)}
+        <div class="bank-reorder-row">
+          <button class="drag-handle" aria-label="Reorder {entry.bank.name}">
+            <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+          <BankIcon logo={entry.bank.logo} icon={entry.bank.icon} name={entry.bank.name} color={entry.bank.color} />
+          <div class="bank-reorder-text">
+            <div class="bank-reorder-name">{entry.bank.name}</div>
+            <div class="bank-reorder-tag">{bankTag(entry)}</div>
+          </div>
+        </div>
+      {/each}
+    </div>
+  </div>
+</div>
+
 <BankFormSheet
   open={formOpen}
   mode={formMode}
   initial={formInitial}
+  {balanceLocked}
   otherBanks={focusedEntry ? banksList.filter((b) => b.bank.id !== focusedEntry.bank.id) : banksList}
   onClose={() => (formOpen = false)}
   onSubmit={handleFormSubmit}
@@ -323,17 +430,13 @@
     font-size: 13.5px; font-weight: 700; color: var(--gold); padding: 6px 12px 6px 10px;
   }
 
-  /* .sheet-page-body is plain block (app.css) -- turning it into a column
-     flex container here lets .stack-wrap grow to fill whatever's left and
-     push the peek stack down to the true bottom of the visible content,
-     like real Wallet, instead of a fixed guess-a-margin gap. Needs an
-     explicit height now that it's normal-flow rather than flex:1 inside a
-     fixed-height .sheet -- roughly the viewport minus .view's own top/
-     bottom padding (safe-area + tab-bar clearance). Approximate on purpose
-     (doesn't subtract this component's own header height) -- rough is fine
-     for what this min-height is for (giving the collapsed peek stack room
-     to sit low), revisit only if it looks visually off on-device. */
-  .sheet-page-body { display: flex; flex-direction: column; min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 124px); }
+  /* .sheet-page-body's own min-height now lives globally in app.css (every
+     sheet page needs it, for swipeBack.js's full-screen touch target, not
+     just this one) -- this just adds the column-flex layout on top, which
+     is what lets .stack-wrap grow to fill whatever's left and push the peek
+     stack down to the true bottom, like real Wallet, instead of a fixed
+     guess-a-margin gap. */
+  .sheet-page-body { display: flex; flex-direction: column; }
   .sheet-body-top { flex-shrink: 0; }
   /* Svelte keeps an out-transitioning element in the DOM (at its full,
      normal-flow size) for the whole crossfade duration, then removes it --
@@ -372,7 +475,7 @@
   .stack-wrap.expanded { justify-content: flex-start; }
   /* Nudges the collapsed peek stack further down, closer to the true
      bottom of the sheet, eating into .sheet-body's own bottom padding. */
-  .stack-wrap:not(.expanded) { margin-bottom: -65px; }
+  .stack-wrap:not(.expanded) { margin-bottom: -200px; }
 
   .bank-stack { display: flex; flex-direction: column; }
 
@@ -467,4 +570,92 @@
   .bank-stat.right { text-align: right; }
   .bank-stat .k { font-size: 10.5px; color: var(--card-dim, var(--dim)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
   .bank-stat .v { font-size: 14px; font-weight: 700; margin-top: 3px; }
+
+  /* Same drag-handle/sortable-list treatment as Settings' Fixed categories/
+     Buffer labels -- Svelte scopes styles per-component, so this needs its
+     own copy here rather than sharing that one. */
+  .drag-handle {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--dim);
+    touch-action: none;
+    cursor: grab;
+  }
+  :global(.sortable-list .sortable-ghost) {
+    opacity: 0.3;
+  }
+  :global(.sortable-list .sortable-drag) {
+    background: var(--panel-2);
+    border-radius: 12px;
+    box-shadow: 3px 3px 0 var(--stroke-2);
+  }
+  .bank-reorder-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--stroke);
+  }
+  .sortable-list .bank-reorder-row:last-child {
+    border-bottom: none;
+  }
+  .bank-reorder-text { flex: 1; min-width: 0; }
+  .bank-reorder-name { font-size: 13.5px; font-weight: 600; color: var(--hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bank-reorder-tag { font-size: 11px; color: var(--dim); margin-top: 1px; }
+
+  /* ---------- Organize: half-height bottom sheet ---------- */
+  .organize-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(6, 7, 10, 0.6);
+    z-index: 70;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+  }
+  .organize-backdrop.open { opacity: 1; pointer-events: auto; }
+  .organize-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    z-index: 71;
+    background: var(--ink);
+    border: 2px solid var(--stroke-2);
+    border-bottom: none;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -3px 0 var(--stroke-2);
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: transform;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .organize-sheet.open { transform: translateY(0); }
+  .organize-handle {
+    width: 36px; height: 4px;
+    border-radius: 99px;
+    background: var(--stroke-2);
+    margin: 10px auto 2px;
+    flex-shrink: 0;
+  }
+  .organize-hd {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 18px 4px;
+    flex-shrink: 0;
+  }
+  .organize-hd h3 { font-size: 15.5px; font-weight: 700; margin: 0; }
+  .organize-hd .icon-btn { width: 32px; height: 32px; }
+  .organize-list-wrap {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 18px 8px;
+    scrollbar-width: none;
+  }
+  .organize-list-wrap::-webkit-scrollbar { display: none; }
 </style>

@@ -1,5 +1,5 @@
 <script>
-  import { currentMonth, template } from '../lib/stores.js';
+  import { currentMonth, template, goals as goalsStore } from '../lib/stores.js';
   import { computeSpentTotal, computeTotalBalance, computeBankFreeTotal, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
@@ -27,6 +27,7 @@
   let month = $derived($currentMonth);
   let tmpl = $derived($template);
   let banksList = $derived($bankPreviewStore);
+  let goalList = $derived($goalsStore ?? []);
 
   let step = $state(1);
   let bonusOn = $state(false);
@@ -40,7 +41,12 @@
     }
   });
 
-  let spentTotal = $derived(month ? computeSpentTotal(month) : 0);
+  // Includes money given away to (or spent out of) a goal this cycle, not
+  // just category/buffer spending -- see computeGoalGivenTotal's comment in
+  // calc.js. Without `goalList` here, a real bank-to-goal giveaway (a
+  // real, permanent expense) silently vanished from both this figure and
+  // `recordedTotal` below, the exact gap History's Monthly Log has too.
+  let spentTotal = $derived(month ? computeSpentTotal(month, goalList) : 0);
   // What actually carries forward -- the real, live bank total (see
   // computeBankFreeTotal's comment in calc.js), not the old single-pool
   // startingBalance chain. That old figure has no idea about Transfers or
@@ -56,6 +62,11 @@
   let mainBank = $derived(banksList.find((b) => b.bank.isMain) || banksList[0]);
   let wrapDesign = $derived(getCardDesign(mainBank?.bank?.design));
   let wrapBorderColor = $derived(mainBank ? cardBorderColor(mainBank.bank) : 'var(--stroke-2)');
+  // Money already set aside for goals, across every bank -- Left over
+  // (computeBankFreeTotal) already excludes this same amount, so surfacing
+  // it here is what explains why Left over is lower than the balance you'd
+  // see just adding up bank cards yourself.
+  let totalReserved = $derived(round2(banksList.reduce((s, b) => s + (b.reserved || 0), 0)));
 
   function nextMonthKey(key) {
     const [y, m] = key.split('-').map(Number);
@@ -75,6 +86,7 @@
     // for closed months) -- the live month's own Buffer/Remaining no longer
     // read it at all, see computeBankFreeTotal.
     const newStartingBalance = round2(leftover + month.income);
+    const startedAt = new Date().toISOString();
 
     await db.transaction('rw', db.months, db.banks, async () => {
       await db.months.update(month.key, { closed: 1, recordedTotal: spentTotal });
@@ -94,7 +106,15 @@
         // The exact moment this cycle began -- cycles don't align to calendar
         // month boundaries (e.g. "August" can start on 31 July), so this is
         // what "current cycle" checks compare against, not the month key.
-        startedAt: new Date().toISOString(),
+        startedAt,
+        // A dated record of the adjustBankBalance credit below -- without
+        // this, computeBankActivity/bankNetMovement (bankPreviewStore.js,
+        // History.svelte) have no way to see that this bank's real balance
+        // just moved, so every OLDER closed month's own reconstructed
+        // Start/Balance for this bank would silently jump up by this exact
+        // amount the moment this cycle starts (a real bug -- see
+        // computeBankActivity's own comment on salaryCredit).
+        salaryCredit: mainBank ? { date: startedAt, amount: round2(month.income + bonusAmt), bankId: mainBank.bank.id } : null,
       });
 
       // Salary (+ bonus) has to actually land in a real bank now that
@@ -138,7 +158,7 @@
           <CardPattern kind={wrapDesign.pattern} color={wrapDesign.patternColor} opacity={wrapDesign.patternOpacity} />
           <div class="wrap-card-top">
             <div class="wrap-month">{month.label}</div>
-            <div class="bank-brand">BAJETBRO</div>
+            {#if totalReserved > 0}<div class="wrap-reserved num">Goals RM {fmt(totalReserved)}</div>{/if}
           </div>
           <div class="bank-balance-lbl">Left over</div>
           <div class="bank-balance-amt" class:down={leftover < 0}>
@@ -203,9 +223,9 @@
   }
   .wrap-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .wrap-month { font-weight: 700; font-size: 14.5px; color: var(--card-fg, var(--hi)); }
-  .bank-brand {
-    font-family: var(--display); font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
-    color: var(--card-dim, var(--dim)); text-transform: uppercase;
+  .wrap-reserved {
+    font-size: 13px; font-weight: 700;
+    color: var(--gold);
   }
   .bank-balance-lbl { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--card-dim, var(--dim)); }
   .bank-balance-amt {

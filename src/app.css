@@ -527,7 +527,19 @@ h2.title {
 .sheet-page { display: none; background: var(--ink); }
 .sheet-page.open { display: block; }
 .sheet-page-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 10px; flex-shrink: 0; }
-.sheet-page-body { padding: 8px 0 24px; }
+/* min-height (roughly .view's own top/bottom padding budget: 16px + 108px
+   dock clearance, plus the safe-area insets .view already subtracts) makes
+   a sheet page's box always cover the full screen, even one whose real
+   content is just a couple of lines (an empty state like Goals' "Closed
+   goals" with nothing closed yet). Without this, a short sheet's box was
+   only as tall as its own content, and anywhere below that showed the app's
+   background instead -- functionally outside this element entirely, which
+   is what made swipeBack.js's touch listener (attached to the sheet's own
+   root) only fire over the content itself, not "anywhere on the page" like
+   it's meant to. Approximate on purpose (doesn't subtract each page's own
+   header height) -- same rough tradeoff ManageBanksSheet's own version of
+   this already accepted before being generalized here. */
+.sheet-page-body { padding: 8px 0 24px; box-sizing: border-box; min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 124px); }
 
 .amt-display { text-align: center; padding: 22px 0 18px; }
 .amt-display .cur { font-size: 18px; color: var(--lo); vertical-align: 6px; margin-right: 4px; }

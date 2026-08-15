@@ -7,6 +7,7 @@
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
+  import { swipeBack } from '../lib/swipeBack.js';
 
   let { open, category, onClose } = $props();
 
@@ -103,7 +104,11 @@
     );
     await writeCategories(cats);
     if (key === 'saving') await adjustPot(-txNet(tx));
-    if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount);
+    // Only txNet, not tx.amount -- any already-reimbursed portion was
+    // credited back to the bank at the time it was marked paid back (see
+    // commitEdit below), so re-crediting the full gross amount here would
+    // pay that slice back twice.
+    if (tx.bankId) await adjustBankBalance(tx.bankId, txNet(tx));
     // Give back whatever this entry had eaten into a goal's reserve (see
     // AddExpenseSheet's overspend warning) -- it's not spending anymore
     // once the entry itself is gone.
@@ -147,8 +152,11 @@
         await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, label] });
       }
       // Bank tag never changes here -- moving categories doesn't change which
-      // account physically paid for it, only the gross amount does.
-      if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount - amt);
+      // account physically paid for it. Compare NET debits (oldNet/newNet),
+      // not gross amounts -- a change in how much of this entry is paid
+      // back moves real money back into the bank too, not just the
+      // budget's actual figure.
+      if (tx.bankId) await adjustBankBalance(tx.bankId, round2(oldNet - newNet));
       if (tx.bankId) {
         const consumption = await reconcileGoalReserve(tx.bankId, tx.reserveConsumption);
         if (consumption.length || tx.reserveConsumption?.length) {
@@ -194,8 +202,9 @@
       showToast(`Moved to ${destName}`);
     }
     // Bank tag never changes here -- moving categories doesn't change which
-    // account physically paid for it, only the gross amount does.
-    if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount - amt);
+    // account physically paid for it. Compare NET debits (oldNet/newNet),
+    // not gross amounts -- see the Buffer-branch comment above for why.
+    if (tx.bankId) await adjustBankBalance(tx.bankId, round2(oldNet - newNet));
     // Re-derive this entry's effect on a goal's reserve against its NEW
     // amount -- undoes whatever the OLD amount had consumed first, then
     // consumes fresh if the new amount still dips in.
@@ -224,7 +233,7 @@
   }
 </script>
 
-<div class="sheet-page" class:open>
+<div class="sheet-page" class:open use:swipeBack={onClose}>
   <div class="sheet-page-hd">
     <button class="icon-btn" aria-label="Close" onclick={onClose}>
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

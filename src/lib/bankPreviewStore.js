@@ -21,9 +21,50 @@
 // free, with no bank-specific reset code needed.
 import { derived, writable, get } from 'svelte/store';
 import db from './db.js';
-import { banks as rawBanks, currentMonth, goals as goalsStore } from './stores.js';
+import { banks as rawBanks, currentMonth, closedMonths, goals as goalsStore } from './stores.js';
 import { GOAL_COLORS, BUFFER_COLOR } from './constants.js';
-import { round2, spendRM, goalReserveByBank, computeTotalRemaining } from './calc.js';
+import { round2, spendRM, goalReserveByBank, computeTotalRemaining, inCycle } from './calc.js';
+
+// True once a bank has appeared in ANY real transaction, in ANY month ever
+// tracked (not just this cycle) -- Balance is only meant to be hand-typed
+// while setting the bank up; once something's actually happened through
+// it, editing Balance directly would silently create drift (a Balance jump
+// with no dated entry behind it) instead of a real, dated transaction.
+// BankFormFields uses this to lock the Balance field in edit mode.
+export function bankHasHistory(bankId) {
+  if (!bankId) return false;
+  const months = [...(get(closedMonths) || []), get(currentMonth)].filter(Boolean);
+  for (const month of months) {
+    for (const cat of month.categories || []) {
+      if ((cat.transactions || []).some((tx) => tx.bankId === bankId)) return true;
+    }
+    if ((month.extras || []).some((e) => e.bankId === bankId)) return true;
+    if ((month.reimbursements || []).some((r) => r.bankId === bankId)) return true;
+    if ((month.additionalIncomeLog || []).some((e) => e.bankId === bankId)) return true;
+    if ((month.transfers || []).some((t) => t.fromBankId === bankId || t.toBankId === bankId)) return true;
+  }
+  for (const g of get(goalsStore) || []) {
+    if ((g.allocations || []).some((a) => a.fromBankId === bankId || a.heldInBankId === bankId)) return true;
+    if ((g.spends || []).some((s) => s.bankId === bankId)) return true;
+  }
+  return false;
+}
+
+// Folds a hand-typed Balance change straight into this cycle's baseline
+// (month.startingBalance), NOT into Additional income -- this only ever
+// runs for a bank with no history yet (see bankHasHistory), while you're
+// still setting a starting number, not logging something that happened.
+// It shouldn't leave a dated entry anywhere (no note, no bankId, nothing
+// in BankTransactionsSheet) -- it's a correction to the starting point
+// itself, same as if you'd typed the right number the first time. Feeds
+// History's Monthly-log "Income" (startingBalance + bonus + additionalIncome)
+// without ever looking like a transaction.
+async function adjustCycleBaseline(delta) {
+  if (!delta) return;
+  const month = get(currentMonth);
+  if (!month) return; // no cycle yet -- e.g. onboarding is creating the very first one itself
+  await db.months.update(month.key, { startingBalance: round2((month.startingBalance || 0) + delta) });
+}
 
 // Scans one month for every entry tagged with this bank, in the exact
 // {note, date, amount, income, color} shape BankCard/BankTransactionsSheet/
@@ -45,14 +86,14 @@ export function computeBankActivity(month, allGoals, bankId) {
   for (const cat of month.categories || []) {
     for (const tx of cat.transactions || []) {
       if (tx.bankId === bankId) {
-        entries.push({ note: tx.note || cat.name, date: tx.date, amount: tx.amount, income: false, color: cat.color, source: { kind: 'category', catKey: cat.key, tx } });
+        entries.push({ note: tx.note || cat.name, date: tx.date, amount: tx.amount, reimbursed: tx.reimbursed || 0, income: false, color: cat.color, source: { kind: 'category', catKey: cat.key, tx } });
       }
     }
   }
   for (const e of month.extras || []) {
     if (e.bankId === bankId) {
       const full = round2((e.actual || 0) + (e.reimbursed || 0));
-      entries.push({ note: e.note || e.name, date: e.date, amount: full, income: false, color: BUFFER_COLOR, source: { kind: 'buffer', extra: e } });
+      entries.push({ note: e.note || e.name, date: e.date, amount: full, reimbursed: e.reimbursed || 0, income: false, color: BUFFER_COLOR, source: { kind: 'buffer', extra: e } });
     }
   }
   for (const r of month.reimbursements || []) {
@@ -70,18 +111,43 @@ export function computeBankActivity(month, allGoals, bankId) {
       entries.push({ note: e.note || 'Additional income', date: e.date, amount: e.amount, income: true, color: 'var(--good)', source: { kind: 'additionalIncome', entry: e } });
     }
   }
-  // Transfers -- relocating your own money between two of your own banks.
-  // The sending side isn't spending (the money's still yours, just
-  // elsewhere), so it stays `neutral: true`, excluded from this bank's
-  // sums. The receiving side, though, is money that just showed up in THIS
-  // bank -- functionally identical to income from this bank's own point of
-  // view, so it counts toward its Income stat (not neutral).
+  // Salary (+ bonus) landing in the main bank at cycle start (see
+  // EndMonthSheet's confirmStartCycle) is a REAL adjustBankBalance credit,
+  // but until now had no dated entry anywhere to represent it -- it was
+  // completely invisible to this whole reconstruction. That silently broke
+  // bankNetMovement (see History.svelte) for every month BEFORE the one
+  // that just started: walking backward from the bank's current real
+  // balance to reconstruct an old month's Start/Balance sums every month's
+  // net movement from that month through to today, and a real credit with
+  // no entry to represent it just doesn't get subtracted back out, so the
+  // instant a new cycle starts, every earlier closed month's reconstructed
+  // Start/Balance for this bank jumps up by exactly the new cycle's salary
+  // -- which is the exact bug this fixes. Not `neutral` -- salary landing
+  // in a bank genuinely is that bank's income this cycle, same as
+  // Additional income, so it correctly counts toward the Income stat too.
+  if (month.salaryCredit && month.salaryCredit.bankId === bankId) {
+    const sc = month.salaryCredit;
+    entries.push({ note: 'Salary', date: sc.date, amount: sc.amount, income: true, color: 'var(--good)', source: { kind: 'salaryCredit' } });
+  }
+  // Transfers -- relocating your own money between two of your own banks,
+  // neither side is real income or spending. Both stay `neutral: true`,
+  // excluded from this bank's Income/Spending sums -- it's still your own
+  // money just changing which account it sits in, not something you earned.
+  // `income: true` stays on the receiving side (unlike the sending side's
+  // `income: false`) purely as a direction tag: History's own per-bank
+  // breakdown (bankBreakdown in History.svelte) filters on
+  // `source.kind === 'transfer' && e.income` to show it as its own "+Y"
+  // bolt-on line on Start, separate from the headline Income figure --
+  // that filter, and bankNetMovement's real-balance-movement math (which
+  // deliberately ignores `neutral`, see its own comment), both still work
+  // unchanged; only the Income STAT itself (entries filtered by
+  // `e.income && !e.neutral`) now correctly excludes it.
   for (const t of month.transfers || []) {
     if (t.fromBankId === bankId) {
       entries.push({ note: t.note || 'Transfer out', date: t.date, amount: t.amount, income: false, neutral: true, color: 'var(--dim)', source: { kind: 'transfer', transfer: t } });
     }
     if (t.toBankId === bankId) {
-      entries.push({ note: t.note || 'Transfer in', date: t.date, amount: t.amount, income: true, color: 'var(--dim)', source: { kind: 'transfer', transfer: t } });
+      entries.push({ note: t.note || 'Transfer in', date: t.date, amount: t.amount, income: true, neutral: true, color: 'var(--dim)', source: { kind: 'transfer', transfer: t } });
     }
   }
   // Goal allocations/spends -- see AddExpenseSheet's "addgoal" save branch
@@ -92,8 +158,17 @@ export function computeBankActivity(month, allGoals, bankId) {
   // see computeBankReserved below for that. Spends are always real spending,
   // wherever the reserve happened to be sitting, converted to RM since a
   // goal's own ledger can be in a foreign currency but a bank's can't.
+  //
+  // inCycle(month, ...) is required here -- goals live in their own
+  // top-level table, never nested inside `month` the way categories/extras
+  // are, so without scoping this to THIS cycle every allocation/spend ever
+  // made would show up again in every later month's activity forever (a
+  // real bug: a goal contribution made in August kept reappearing as an
+  // August-dated "Given to X" entry in September's, October's, etc. own
+  // bank activity, on top of whatever actually happened that cycle).
   for (const g of allGoals || []) {
     for (const a of g.allocations || []) {
+      if (!inCycle(month, a.date, a.cycleMonth)) continue;
       if (a.fromBankId === bankId && a.heldInBankId == null) {
         entries.push({ note: a.note || `Given to ${g.label}`, date: a.date, amount: a.amount, income: false, color: g.color, source: { kind: 'goalAllocation', goalId: g.id, alloc: a } });
       } else if (a.fromBankId === bankId && a.heldInBankId && a.heldInBankId !== bankId) {
@@ -103,6 +178,7 @@ export function computeBankActivity(month, allGoals, bankId) {
       }
     }
     for (const s of g.spends || []) {
+      if (!inCycle(month, s.date, s.cycleMonth)) continue;
       if (s.bankId === bankId) {
         entries.push({ note: s.label || `Spent · ${g.label}`, date: s.date, amount: spendRM(g, s), income: false, color: g.color, source: { kind: 'goalSpend', goalId: g.id, spend: s } });
       }
@@ -111,7 +187,12 @@ export function computeBankActivity(month, allGoals, bankId) {
 
   entries.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   const income = round2(entries.filter((e) => e.income && !e.neutral).reduce((s, e) => s + e.amount, 0));
-  const spending = round2(entries.filter((e) => !e.income && !e.neutral).reduce((s, e) => s + e.amount, 0));
+  // Net of whatever's been paid back -- entries keep their gross `amount`
+  // for display/editing (BankTransactionsSheet's quick editor treats it as
+  // the real gross figure), but the Spending stat itself should reflect
+  // money you're actually still out, same as a category/buffer's own
+  // `actual` already does.
+  const spending = round2(entries.filter((e) => !e.income && !e.neutral).reduce((s, e) => s + (e.amount - (e.reimbursed || 0)), 0));
   return { income, spending, transactions: entries };
 }
 
@@ -121,15 +202,41 @@ export function computeBankActivity(month, allGoals, bankId) {
 // precedent as the old computeOpenSavingsReserve) -- no separate "return
 // the leftover" step needed.
 export function computeBankReserved(allGoals, bankId) {
+  return computeBankReservedAsOf(allGoals, bankId, null);
+}
+
+// Point-in-time version for History's Monthly Log -- computeBankReserved
+// above always answers "how much is reserved RIGHT NOW," which is exactly
+// what Home/BankCard/ManageBanksSheet want, but is wrong for a CLOSED (or
+// even the current) row's own Start/Balance reconstruction: a goal
+// allocation/spend made mid-cycle would otherwise look like it had already
+// been reserved since before that cycle even started, understating that
+// row's true starting free balance by however much got reserved partway
+// through. `cutoffKey` (a month.key, e.g. '2026-08') restricts this to only
+// allocations/spends dated on or before it -- `null` means no cutoff (same
+// as the live, all-time answer above). Falls back to the entry's own
+// `date` (sliced to YYYY-MM) for anything logged before `cycleMonth`
+// existed. Goal-closed state has no historical timestamp of its own either
+// (just a `closed` boolean, not "closed as of when") -- still read from its
+// CURRENT value uniformly across every row, same simplifying tradeoff this
+// whole reconstruction already makes elsewhere for figures with no
+// per-month history (see bankBreakdown's own comment in History.svelte).
+export function computeBankReservedAsOf(allGoals, bankId, cutoffKey) {
+  const entryKey = (e) => e.cycleMonth || (e.date ? String(e.date).slice(0, 7) : null);
+  const onOrBefore = (e) => {
+    if (!cutoffKey) return true;
+    const key = entryKey(e);
+    return !key || key <= cutoffKey;
+  };
   let total = 0;
   for (const g of allGoals || []) {
     if (g.closed) continue;
     let heldHere = 0;
     for (const a of g.allocations || []) {
-      if (a.heldInBankId === bankId) heldHere = round2(heldHere + a.amount);
+      if (a.heldInBankId === bankId && onOrBefore(a)) heldHere = round2(heldHere + a.amount);
     }
     for (const s of g.spends || []) {
-      if (s.bankId === bankId) heldHere = round2(heldHere - spendRM(g, s));
+      if (s.bankId === bankId && onOrBefore(s)) heldHere = round2(heldHere - spendRM(g, s));
     }
     total = round2(total + Math.max(0, heldHere));
   }
@@ -369,16 +476,22 @@ export async function deleteTaggedEntry(month, source) {
       );
       await db.months.update(month.key, { categories });
       if (source.catKey === 'saving') await adjustSavingPot(month.key, -net);
-      if (tx.bankId) await adjustBankBalance(tx.bankId, tx.amount);
+      // Only `net`, not tx.amount -- any already-reimbursed portion was
+      // credited back to the bank when it was marked paid back, so
+      // re-crediting the full gross amount here would pay it back twice.
+      if (tx.bankId) await adjustBankBalance(tx.bankId, net);
       // Give back whatever this entry had eaten into a goal's reserve --
       // it's not spending anymore, since the entry itself is gone.
       if (tx.bankId) await reconcileGoalReserve(tx.bankId, tx.reserveConsumption);
     } else if (source.kind === 'buffer') {
       const extra = source.extra;
-      const full = round2((extra.actual || 0) + (extra.reimbursed || 0));
       const extras = month.extras.filter((e) => e !== extra);
       await db.months.update(month.key, { extras });
-      if (extra.bankId) await adjustBankBalance(extra.bankId, full);
+      // Only the still-outstanding net debit (extra.actual), not the full
+      // gross amount -- any already-reimbursed portion was credited back
+      // to the bank when it was marked paid back, so re-crediting the
+      // gross amount here would pay it back twice.
+      if (extra.bankId) await adjustBankBalance(extra.bankId, extra.actual || 0);
       if (extra.bankId) await reconcileGoalReserve(extra.bankId, extra.reserveConsumption);
     } else if (source.kind === 'reimbursement') {
       const entry = source.entry;
@@ -420,6 +533,31 @@ export async function adjustBankBalance(bankId, delta) {
 // fully expanded. Plain (not persisted) -- purely a UI navigation
 // position, resetting to the first bank on reload is harmless.
 export const focusedBankIndex = writable(0);
+
+// Whether every bank card's money figures (BankCard.svelte's balance,
+// income, spending, reserved, fixed deposit, free-to-spend -- both faces)
+// are masked behind dots. ONE shared toggle, not a per-card `hidden` state
+// -- tapping the eye on whichever card is in front hides every card in the
+// carousel at once, the same way a real banking app's privacy toggle would.
+// Persisted via localStorage (not db.meta/Dexie) since this is a pure
+// on-this-device display preference, not real app data -- no need for it to
+// round-trip through a backup export/import.
+const VALUES_HIDDEN_KEY = 'bajetbro_valuesHidden';
+function readValuesHidden() {
+  try {
+    return localStorage.getItem(VALUES_HIDDEN_KEY) === '1';
+  } catch {
+    return false; // private browsing / storage disabled -- just default open
+  }
+}
+export const valuesHidden = writable(readValuesHidden());
+valuesHidden.subscribe((v) => {
+  try {
+    localStorage.setItem(VALUES_HIDDEN_KEY, v ? '1' : '0');
+  } catch {
+    // Same as above -- the toggle just won't survive a relaunch here.
+  }
+});
 
 function uniqueBankId() {
   // crypto.randomUUID() needs a secure context -- unavailable when testing
@@ -516,6 +654,38 @@ export async function backfillLegacyBankTags() {
   await db.meta.put({ key: 'legacyBankTagsBackfilled', value: true });
 }
 
+// The current open month's own salaryCredit (see confirmStartCycle's own
+// comment in EndMonthSheet.svelte on why computeBankActivity needs this) --
+// an install whose cycle was already running before this field existed
+// would otherwise have every closed month's reconstructed Start/Balance for
+// the main bank skewed the moment the NEXT cycle starts, same as if this
+// fix had never shipped. Not gated by a one-time meta flag like the other
+// backfills here -- whether the open month already has one IS the
+// idempotency check, and it's cheap enough to just run every boot.
+//
+// Known imprecise for a month whose bank balance was seeded from the old
+// single-pool remainder mid-cycle (see backfillSingleBank) rather than a
+// real confirmStartCycle salary credit -- there's no signal here to tell
+// that case apart from "this really did happen, the field just didn't
+// exist yet to record it," so it's treated the same as the latter. Kept
+// anyway on the user's own call: the salary is genuinely real income
+// either way, and this only ever affects the one month straddling
+// multi-bank's own introduction, not anything ongoing.
+export async function backfillSalaryCredit() {
+  const current = await db.months.where('closed').equals(0).first();
+  if (!current || current.salaryCredit !== undefined) return;
+  const list = await db.banks.orderBy('order').toArray();
+  const mainBank = list.find((b) => b.bank.isMain) || list[0];
+  if (!mainBank) return;
+  await db.months.update(current.key, {
+    salaryCredit: {
+      date: current.startedAt || new Date().toISOString(),
+      amount: round2((current.income || 0) + (current.bonus || 0)),
+      bankId: mainBank.bank.id,
+    },
+  });
+}
+
 export async function addBank({ name, balance = 0, fixedDeposit = 0, type = 'bank', isMain = false, color, icon = null, logo = null, design = 'classic' }) {
   const list = await db.banks.orderBy('order').toArray();
   const resolvedColor = color ?? GOAL_COLORS[list.length % GOAL_COLORS.length];
@@ -533,17 +703,37 @@ export async function addBank({ name, balance = 0, fixedDeposit = 0, type = 'ban
     order: list.length,
   };
   await db.banks.put(entry);
+  // A brand-new bank starting with real money in it adds to this cycle's
+  // pool the same way -- see adjustCycleBaseline. Only the FREE slice of
+  // it, though (balance minus fixedDeposit) -- computeBankFreeTotal (Home's
+  // leftover, Buffer, everywhere else "how much do I actually have" is
+  // computed) always excludes fixed deposit as locked/unspendable, so
+  // Income crediting the full balance here would count money that every
+  // other figure in the app already treats as out of reach.
+  await adjustCycleBaseline(round2(balance - (entry.fixedDeposit || 0)));
   focusedBankIndex.set(list.length);
   return entry;
 }
 
 // Single entry point for editing an existing bank -- shares its field set
 // with addBank (name/balance/fixedDeposit/type/isMain/color/icon/logo/design)
-// so the add and edit forms can be the exact same component.
+// so the add and edit forms can be the exact same component. `balance` is
+// only ever hand-edited here while the bank has no history yet (see
+// bankHasHistory -- BankFormFields locks the field once it does), so any
+// change in it is a correction to the starting number itself, not a real
+// transaction -- see adjustCycleBaseline.
 export async function updateBank(index, { name, balance, fixedDeposit = 0, type, isMain, color, icon, logo, design }) {
   const list = await db.banks.orderBy('order').toArray();
   const target = list[index];
   if (!target) return;
+  // Same free-slice-only reasoning as addBank -- compare FREE balance
+  // (balance minus fixedDeposit) before and after, not the raw balance
+  // delta, so marking part of an existing setup-time balance as a fixed
+  // deposit (or un-marking it) moves Income by exactly what actually
+  // became spendable/locked, not by whatever the raw Balance field says.
+  const oldFree = round2((target.balance || 0) - (target.fixedDeposit || 0));
+  const newFree = round2((balance ?? target.balance) - (fixedDeposit || 0));
+  const freeDelta = round2(newFree - oldFree);
   if (isMain) {
     await Promise.all(
       list
@@ -556,6 +746,7 @@ export async function updateBank(index, { name, balance, fixedDeposit = 0, type,
     fixedDeposit: round2(fixedDeposit || 0),
     bank: { ...target.bank, name, type, isMain, color, icon, logo, design },
   });
+  await adjustCycleBaseline(freeDelta);
 }
 
 // `promoteMainId`: when deleting the main bank, every other place that
@@ -571,6 +762,15 @@ export async function deleteBank(index, { promoteMainId } = {}) {
   const target = list[index];
   if (!target) return;
   await db.banks.delete(target.bank.id);
+  // Reverses whatever free balance this bank ever credited to Income (see
+  // addBank/updateBank's adjustCycleBaseline calls) -- otherwise deleting a
+  // bank makes its money vanish from tracking while Income keeps counting
+  // it forever. Uses the bank's CURRENT free balance (balance minus
+  // fixedDeposit, floored at 0), not whatever was originally credited --
+  // real transactions since then (spends, transfers, additional income)
+  // already moved Income/balance correctly on their own, so this only
+  // needs to undo the slice that's disappearing right now.
+  await adjustCycleBaseline(-round2(Math.max(0, (target.balance || 0) - (target.fixedDeposit || 0))));
   // Re-number `order` for the rest so it stays a clean, gapless sequence.
   const remaining = list.filter((b) => b.bank.id !== target.bank.id);
   await Promise.all(remaining.map((b, i) => db.banks.update(b.bank.id, { order: i })));
