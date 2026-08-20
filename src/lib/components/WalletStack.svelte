@@ -11,6 +11,7 @@
   // is the focus) -- NOT Home's BankCard.svelte, which is a different look
   // (traffic-light dots, a flip-to-back gesture) that doesn't belong to this
   // page. No flip here: a real ~205px-tall static face only.
+  import { tick } from 'svelte';
   import { round2 } from '../calc.js';
   import { fmt } from '../format.js';
   import { getCardDesign, cardBorderColor, bankTypeLabel } from '../constants.js';
@@ -42,6 +43,42 @@
     if (collapse) activeId = null;
   });
 
+  // FLIP-style slide for the wallet's own size/position change (rest <->
+  // fanned), same technique AddExpenseSheet.svelte's FAB morph already
+  // uses -- let the actual layout change apply INSTANTLY (cheap: one
+  // reflow, not one per animation frame -- see .wallet-outer/.wallet-slot's
+  // own comments on why animating height directly wasn't smooth), then
+  // play the visual difference back as a pure transform via the Web
+  // Animations API. transform is compositor-only, so this adds zero
+  // further layout cost regardless of duration.
+  //
+  // beforeTop MUST be measured synchronously at the moment of the tap, not
+  // remembered from some earlier point -- a first version measured it
+  // inside an $effect keyed on `fanned`, which only re-ran when `fanned`
+  // itself changed. Scrolling the page while already fanned (very possible
+  // -- the list can be tall) doesn't touch `fanned`, so that remembered
+  // position went stale: closing from a different scroll position than the
+  // one last recorded animated from the WRONG remembered spot, which is
+  // exactly why it looked like the wallet was sliding in from the top of
+  // the page instead of from wherever it actually was. Measuring fresh at
+  // each tap's call site (tapWallet/cardCapture below), right before the
+  // state change, has no such staleness window.
+  let outerEl = $state(null);
+  let activeFlipAnim = null;
+  async function flipWallet(beforeTop) {
+    if (beforeTop == null || !outerEl) return;
+    await tick();
+    if (!outerEl) return;
+    const afterTop = outerEl.getBoundingClientRect().top;
+    const delta = beforeTop - afterTop;
+    if (!delta) return;
+    activeFlipAnim?.cancel();
+    activeFlipAnim = outerEl.animate(
+      [{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0px)' }],
+      { duration: 500, easing: 'cubic-bezier(0.34, 1.2, 0.64, 1)' }
+    );
+  }
+
   let total = $derived(round2(banks.reduce((s, b) => s + (b.balance || 0), 0)));
 
   function bankTag(entry) {
@@ -52,8 +89,10 @@
   // which stops the event before it ever reaches here) opens the fan on
   // first tap, closes it on the next.
   function tapWallet() {
+    const beforeTop = outerEl?.getBoundingClientRect().top ?? null;
     fanned = !fanned;
     if (!fanned) activeId = null;
+    flipWallet(beforeTop);
   }
 
   // Capture-phase so a card tap is intercepted before it could bubble up to
@@ -67,8 +106,13 @@
       onEditBank(bank);
       return;
     }
+    // Only opening the fan (rest -> list) actually changes .wallet-outer's
+    // own size -- switching which card is active within an already-fanned
+    // stack doesn't, so there's nothing to flip in that case.
+    const beforeTop = !fanned ? (outerEl?.getBoundingClientRect().top ?? null) : null;
     if (!fanned) fanned = true;
     activeId = bank.id;
+    flipWallet(beforeTop);
   }
 
   // Fan-out geometry, index-based so this works for any number of banks (the
@@ -143,7 +187,7 @@
      stable-height slot instead means the wallet stays centered regardless
      of how tall the stack of cards behind it grows. -->
 <div class="wallet-slot" class:fanned>
-<div class="wallet-outer" class:fanned style="height:{stackHeight}px;">
+<div class="wallet-outer" class:fanned bind:this={outerEl} style="height:{stackHeight}px;">
   <div class="wallet-back"></div>
 
   <div
@@ -161,7 +205,7 @@
       <div
         class="stack-card"
         class:active={activeId === b.bank.id}
-        style="bottom:{bottomFor(i, banks.length, fanned)}px; --rot:{fanned ? rotateFor(i) : 0}deg; z-index:{activeId === b.bank.id ? 999 : 10 + i};
+        style="--lift:{bottomFor(i, banks.length, fanned)}px; --rot:{fanned ? rotateFor(i) : 0}deg; z-index:{activeId === b.bank.id ? 999 : 10 + i};
           border-color:{borderColor}; box-shadow:5px 5px 0 {borderColor}; background:{design.bg}; --card-fg:{design.fg}; --card-dim:{design.dim};"
         role="presentation"
         onclickcapture={(e) => cardCapture(b.bank, e)}
@@ -252,7 +296,14 @@
     flex-direction: column;
     justify-content: center;
     height: calc(var(--app-vh, 1dvh) * 55);
-    transition: height 0.5s ease;
+    /* No transition here (or on .wallet-outer below) -- tried animating
+       height (single element, not per-card like .stack-card's old bottom
+       animation) on the theory that one element's reflow would be cheap
+       enough to keep smooth. On a real device it wasn't -- this container's
+       height change cascades into the surrounding .sheet-page-body's own
+       scroll-layout every frame, which is apparently still enough reflow
+       cost to matter. Confirmed smooth without it; the wallet snaps its
+       size instead of sliding as a tradeoff for that. */
   }
   .wallet-slot.fanned {
     height: auto;
@@ -266,8 +317,8 @@
     /* Height comes from the inline style (JS-computed, see stackHeight) --
        overflow stays visible (never set otherwise below) so fanned-out
        cards are free to rise above the pouch exactly like the original
-       demo's cards rise past its own .wallet box; nothing needs to clip. */
-    transition: height 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+       demo's cards rise past its own .wallet box; nothing needs to clip.
+       No transition on height -- see .wallet-slot's own comment on why. */
   }
   /* The "back" of the wallet -- a panel behind the pocket/cards, same idea
      as the original's .wallet-back: it's what makes the pocket read as an
@@ -300,20 +351,32 @@
      .stack-card-top/.stack-detail/.bank-* rules -- same look, deliberately,
      see the script comment at top. No traffic-light dots, no flip tag, no
      flip transform: this design never had either. */
+  /* bottom stays fixed at 0 -- position/fan movement is driven entirely by
+     the translateY(--lift) transform below instead of animating the
+     `bottom` property directly. Animating bottom forces a layout recompute
+     on every frame, for every card at once; a real 120Hz iPhone has to
+     finish that work in ~8.3ms/frame (vs 16.6ms at 60Hz) and visibly
+     couldn't keep up, even though it looked fine in a desktop browser's
+     much more forgiving mobile emulation. transform is GPU-compositable and
+     never touches layout, so the animation cost stays flat regardless of
+     how many cards are fanned -- same curve/duration/distance as before,
+     purely a rendering-cost fix, not a visual change. */
   .stack-card {
     position: absolute;
     left: 50%;
+    bottom: 0;
     width: 88%;
     max-width: 270px;
     background: var(--panel);
     border: 2px solid var(--stroke-2);
     border-radius: 22px;
     overflow: hidden;
-    transform: translateX(-50%) rotate(var(--rot));
-    transition: bottom 0.5s cubic-bezier(0.34, 1.2, 0.64, 1), transform 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+    transform: translateX(-50%) translateY(calc(-1 * var(--lift))) rotate(var(--rot));
+    transition: transform 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+    will-change: transform;
   }
   .stack-card.active {
-    transform: translateX(-50%) rotate(0deg) scale(1.04);
+    transform: translateX(-50%) translateY(calc(-1 * var(--lift))) rotate(0deg) scale(1.04);
   }
   .stack-card-top {
     display: flex;
