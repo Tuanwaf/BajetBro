@@ -1,11 +1,12 @@
 <script>
-  import { fmt, formatDate } from '../lib/format.js';
+  import { fmt, formatDate, toDatetimeLocalValue, cycleDatetimeBounds } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { currentMonth } from '../lib/stores.js';
   import { banks as bankPreviewStore, moveTransactionsBank, updateTaggedEntry, deleteTaggedEntry } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
+  import DateTimeField from '../lib/components/DateTimeField.svelte';
 
   let { open, bank, transactions = [], onClose } = $props();
 
@@ -19,6 +20,10 @@
 
   let month = $derived($currentMonth);
   let banksList = $derived($bankPreviewStore);
+  // Every editable kind here (category/buffer/reimbursement/
+  // additionalIncome/transfer) always lives on the current, still-open
+  // month -- no "next cycle" to bound against, same as AddExpenseSheet.
+  let dtBounds = $derived(cycleDatetimeBounds(month));
   // Every other bank a wrongly-tagged entry could move to -- moving to the
   // one it's already on would be a no-op.
   let otherBanks = $derived(banksList.filter((b) => b.bank.id !== bank?.id));
@@ -36,6 +41,7 @@
   let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
+  let editDateInput = $state('');
 
   // Exactly one of tx/extra/entry/transfer is set depending on source.kind --
   // this gets at the underlying object regardless of which.
@@ -79,11 +85,18 @@
     const e = rawEntry(t.source);
     editAmt = String(t.amount);
     editNote = e.note || '';
+    editDateInput = toDatetimeLocalValue(new Date(e.date));
   }
   async function commitEdit(t) {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
-    await updateTaggedEntry(month, t.source, { amount: amt, note: editNote.trim() });
+    const chosen = new Date(editDateInput);
+    if (isNaN(chosen)) return showToast('Pick a valid date and time');
+    if (chosen > new Date()) return showToast("Date can't be in the future");
+    if (month.startedAt && chosen < new Date(month.startedAt)) {
+      return showToast(`Date can't be before ${formatDate(month.startedAt)} — that's when this cycle started`);
+    }
+    await updateTaggedEntry(month, t.source, { amount: amt, note: editNote.trim(), date: chosen.toISOString() });
     editingIdx = null;
     showToast('Updated');
   }
@@ -143,6 +156,7 @@
             <div class="tx-edit">
               <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
               <input class="note-input" bind:value={editNote} placeholder="Note (optional)" />
+              <DateTimeField bind:value={editDateInput} min={dtBounds.min} max={dtBounds.max} />
               <div style="display:flex; gap:8px;">
                 <button class="io-btn" style="flex:1;" onclick={() => (editingIdx = null)}>Cancel</button>
                 <button class="save-btn" style="flex:1; margin-top:0;" onclick={() => commitEdit(t)}>Save</button>

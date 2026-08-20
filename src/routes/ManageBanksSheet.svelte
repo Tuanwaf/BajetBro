@@ -13,6 +13,7 @@
   import BankFormSheet from './BankFormSheet.svelte';
   import BankIcon from '../lib/components/BankIcon.svelte';
   import CardPattern from '../lib/components/CardPattern.svelte';
+  import WalletStack from '../lib/components/WalletStack.svelte';
 
   // Same SortableJS wrapper as Settings' Fixed categories/Buffer labels --
   // see that file's comment for why (a hand-rolled Pointer Events drag and
@@ -154,6 +155,17 @@
     formOpen = true;
   }
 
+  // WalletStack's own "tap to focus, tap again to edit" gesture (see its
+  // cardCapture) -- focuses the tapped bank first so openEditForm below
+  // (which reads focusedEntry/focusedIndex, not a parameter) edits the
+  // right one, same as tapping through the old stack UI used to.
+  function editBankFromWallet(bank) {
+    const i = banksList.findIndex((b) => b.bank.id === bank.id);
+    if (i === -1) return;
+    focusedBankIndex.set(i);
+    openEditForm();
+  }
+
   function openEditForm() {
     formMode = 'edit';
     // Balance is only ever hand-typed before a bank has any real
@@ -252,6 +264,15 @@
     <div class="sheet-body-top">
       <p class="hint" style="margin:0 4px 14px;">Tap the card above to edit it, or the list below to pick a different one as your main focus on Home.</p>
 
+      <!-- PROTOTYPE -- tap-adapted uiverse wallet-stack experiment (see
+           WalletStack.svelte). Remove this block (and the import above) once
+           a call is made on whether to keep it. -->
+      <WalletStack banks={banksList} onEditBank={editBankFromWallet} collapse={organizeOpen} />
+
+      <!-- Old card-stack browsing UI, disabled while WalletStack above is
+           the focus (see the PROTOTYPE comment) -- kept intact, not deleted,
+           behind {#if false} so it's a one-line flip back if needed. -->
+      {#if false}
       <div class="hero-slot" class:active={!stackExpanded}>
         {#if !stackExpanded && focusedEntry}
           <div
@@ -290,8 +311,10 @@
           </div>
         {/if}
       </div>
+      {/if}
     </div>
 
+    {#if false}
     <!-- Collapsed: up to MAX_PEEKS cards behind the focused one, each
          rendering its full real face -- the peek effect comes from the
          overlap tucking part of each card behind the one in front, tightly
@@ -359,7 +382,7 @@
         {/each}
       </div>
     </div>
-
+    {/if}
   </div>
   </div>
 </div>

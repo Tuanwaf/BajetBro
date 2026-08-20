@@ -8,7 +8,7 @@
     for (const e of extras || []) map.set(e.name, round2((map.get(e.name) || 0) + (e.actual || 0)));
     return [...map.entries()].map(([name, total]) => ({ name, total }));
   }
-  import { fmt, formatDate } from '../lib/format.js';
+  import { fmt, formatDate, toLocalDateKey } from '../lib/format.js';
   import { BUFFER_COLOR, getCardDesign, cardBorderColor } from '../lib/constants.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
   import CardPattern from '../lib/components/CardPattern.svelte';
@@ -259,7 +259,7 @@
     const map = new Map();
     const add = (date, amount, note, color) => {
       if (!date || date.length < 10) return;
-      const key = date.slice(0, 10);
+      const key = toLocalDateKey(date);
       const day = map.get(key) || { total: 0, entries: [] };
       day.total = round2(day.total + amount);
       day.entries.push({ note, amount, color });
@@ -291,13 +291,20 @@
     return map;
   });
 
-  // Monday-start week containing `date`, at UTC midnight -- everything here
-  // stays in UTC terms throughout (see the note on dailyDays below for why
-  // mixing in local-time Date parsing is what broke this before).
-  function startOfWeekUTC(date) {
-    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-    const mondayOffset = (d.getUTCDay() + 6) % 7; // Mon=0 ... Sun=6
-    d.setUTCDate(d.getUTCDate() - mondayOffset);
+  // Monday-start week containing `date`, at LOCAL midnight -- everything
+  // here stays in local terms throughout, matching dailyMap's keys above
+  // (also local, via toLocalDateKey). These two used to each pick a
+  // different timezone (dailyMap's keys were always the UTC calendar day of
+  // the stored ISO instant, while this side used local Date math), which
+  // silently shifted every lookup a full day for entries near local
+  // midnight in any timezone ahead of UTC -- e.g. a 3am entry in Malaysia
+  // (UTC+8) landing under the previous day. Keeping both sides local fixes
+  // that; mixing UTC and local Date math anywhere in this file reintroduces
+  // it, so don't.
+  function startOfWeekLocal(date) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const mondayOffset = (d.getDay() + 6) % 7; // Mon=0 ... Sun=6
+    d.setDate(d.getDate() - mondayOffset);
     return d;
   }
 
@@ -308,17 +315,17 @@
   }
 
   let weekStart = $derived.by(() => {
-    const d = startOfWeekUTC(new Date());
-    d.setUTCDate(d.getUTCDate() + weekOffset * 7);
+    const d = startOfWeekLocal(new Date());
+    d.setDate(d.getDate() + weekOffset * 7);
     return d;
   });
   let weekEnd = $derived.by(() => {
     const d = new Date(weekStart);
-    d.setUTCDate(d.getUTCDate() + 6);
+    d.setDate(d.getDate() + 6);
     return d;
   });
   let weekRangeLabel = $derived.by(() => {
-    const sameMonth = weekStart.getUTCMonth() === weekEnd.getUTCMonth() && weekStart.getUTCFullYear() === weekEnd.getUTCFullYear();
+    const sameMonth = weekStart.getMonth() === weekEnd.getMonth() && weekStart.getFullYear() === weekEnd.getFullYear();
     const startStr = weekStart.toLocaleDateString('en-MY', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'short' });
     const endStr = weekEnd.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' });
     return `${startStr} – ${endStr}`;
@@ -327,20 +334,14 @@
   // Exactly 7 days, Monday through Sunday, for the current week window --
   // including zero-spend days, so a real bar chart reads by its spacing
   // along time rather than a sparse list of "days something happened".
-  // Every key here is built and walked in UTC, never local time: `tx.date`
-  // is a full UTC ISO string, so slicing its first 10 chars already gives
-  // a UTC calendar day for dailyMap's keys above -- Date.UTC keeps this
-  // walk in those same UTC terms (mixing in local-time Date parsing here
-  // previously shifted every key backward a full day in any timezone
-  // ahead of UTC).
   let dailyDays = $derived.by(() => {
     const out = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekStart);
-      d.setUTCDate(d.getUTCDate() + i);
-      const key = d.toISOString().slice(0, 10);
+      d.setDate(d.getDate() + i);
+      const key = toLocalDateKey(d);
       const day = dailyMap.get(key);
-      out.push({ key, weekday: d.toLocaleDateString('en-MY', { weekday: 'short' }), dayNum: d.getUTCDate(), total: day?.total || 0, entries: day?.entries || [] });
+      out.push({ key, weekday: d.toLocaleDateString('en-MY', { weekday: 'short' }), dayNum: d.getDate(), total: day?.total || 0, entries: day?.entries || [] });
     }
     return out;
   });
@@ -370,7 +371,7 @@
       const found = dailyDays.find((d) => d.key === selectedDayKey);
       if (found) return found;
     }
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = toLocalDateKey(new Date());
     return (
       dailyDays.find((d) => d.key === todayKey) ??
       [...dailyDays].reverse().find((d) => d.total > 0) ??

@@ -377,7 +377,7 @@ async function adjustSavingPot(monthKey, delta) {
 }
 
 // BankTransactionsSheet's own quick editor for ANY bank-tracked entry --
-// amount + note only, no category reassignment and no touching a category/
+// amount + note + date only, no category reassignment and no touching a category/
 // buffer entry's own separate `reimbursed` split (CategoryDetailSheet/
 // BufferDetailSheet remain where THOSE richer edits happen; this is a
 // lighter "fix a typo'd amount" shortcut available right from the bank's
@@ -390,13 +390,13 @@ async function adjustSavingPot(monthKey, delta) {
 // impact is always the GROSS `amount` -- reimbursement is a separate real
 // cash event this editor doesn't touch, so holding it constant means the
 // net delta and the gross delta are identical here regardless.
-export async function updateTaggedEntry(month, source, { amount, note }) {
+export async function updateTaggedEntry(month, source, { amount, note, date }) {
   const cleanNote = note || undefined;
   await db.transaction('rw', db.months, db.banks, db.hutangPots, db.goals, async () => {
     if (source.kind === 'category') {
       const tx = source.tx;
       const delta = round2(amount - tx.amount);
-      const updatedTx = { ...tx, amount, note: cleanNote };
+      const updatedTx = { ...tx, amount, note: cleanNote, date };
       let categories = month.categories.map((c) =>
         c.key === source.catKey
           ? { ...c, actual: round2(c.actual + delta), transactions: (c.transactions || []).map((t) => (t === tx ? updatedTx : t)) }
@@ -424,7 +424,7 @@ export async function updateTaggedEntry(month, source, { amount, note }) {
       const extra = source.extra;
       const oldFull = round2((extra.actual || 0) + (extra.reimbursed || 0));
       const delta = round2(amount - oldFull);
-      const updatedExtra = { ...extra, actual: round2(amount - (extra.reimbursed || 0)), note: cleanNote };
+      const updatedExtra = { ...extra, actual: round2(amount - (extra.reimbursed || 0)), note: cleanNote, date };
       let extras = month.extras.map((e) => (e === extra ? updatedExtra : e));
       await db.months.update(month.key, { extras });
       if (extra.bankId && delta) await adjustBankBalance(extra.bankId, -delta);
@@ -438,13 +438,13 @@ export async function updateTaggedEntry(month, source, { amount, note }) {
     } else if (source.kind === 'reimbursement') {
       const entry = source.entry;
       const delta = round2(amount - entry.amount);
-      const reimbursements = month.reimbursements.map((r) => (r === entry ? { ...r, amount, note: cleanNote } : r));
+      const reimbursements = month.reimbursements.map((r) => (r === entry ? { ...r, amount, note: cleanNote, date } : r));
       await db.months.update(month.key, { reimbursements });
       if (entry.bankId && delta) await adjustBankBalance(entry.bankId, delta);
     } else if (source.kind === 'additionalIncome') {
       const entry = source.entry;
       const delta = round2(amount - entry.amount);
-      const log = month.additionalIncomeLog.map((e) => (e === entry ? { ...e, amount, note: cleanNote } : e));
+      const log = month.additionalIncomeLog.map((e) => (e === entry ? { ...e, amount, note: cleanNote, date } : e));
       const total = round2(log.reduce((s, e) => s + (e.amount || 0), 0));
       await db.months.update(month.key, { additionalIncomeLog: log, additionalIncome: total });
       if (entry.bankId && delta) await adjustBankBalance(entry.bankId, delta);
@@ -454,7 +454,7 @@ export async function updateTaggedEntry(month, source, { amount, note }) {
       // two banks were involved.
       const t = source.transfer;
       const delta = round2(amount - t.amount);
-      const transfers = month.transfers.map((x) => (x === t ? { ...x, amount, note: cleanNote } : x));
+      const transfers = month.transfers.map((x) => (x === t ? { ...x, amount, note: cleanNote, date } : x));
       await db.months.update(month.key, { transfers });
       if (delta) {
         await adjustBankBalance(t.fromBankId, -delta);

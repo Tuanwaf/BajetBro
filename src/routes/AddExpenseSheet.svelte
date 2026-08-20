@@ -2,7 +2,8 @@
   import { get } from 'svelte/store';
   import { currentMonth, template, goals } from '../lib/stores.js';
   import { goalAllocated, goalReserveLeft, goalReserveByBank, goalReached, spendRM, round2 } from '../lib/calc.js';
-  import { fmt } from '../lib/format.js';
+  import { fmt, formatDate, cycleDatetimeBounds } from '../lib/format.js';
+  import DateTimeField from '../lib/components/DateTimeField.svelte';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
@@ -334,6 +335,26 @@
   let kpCents = $state(0);
   let noteValue = $state('');
 
+  // When this entry actually happened -- defaults to right now, but
+  // adjustable back to any point in the CURRENT cycle. Bounded by
+  // month.startedAt (the cycle's real start, which can be in the previous
+  // calendar month -- see EndMonthSheet's comment on why cycles don't align
+  // to calendar boundaries) through the actual moment Save is pressed, not
+  // the moment this sheet was opened.
+  // A single real <input type="datetime-local"> so one tap edits both date
+  // and time together, but it's never actually visible -- it's an
+  // opacity:0 layer stretched over a plain styled display (see the markup),
+  // clipped by the wrapper's overflow:hidden. Rendering it directly (styled
+  // via .note-input, tried first) clipped off the sheet's right edge
+  // on-device: the combined control's native segmented layout has an
+  // intrinsic width iOS won't shrink below, wider than this sheet has room
+  // for. Invisible, that native sizing quirk no longer has anything to
+  // visibly clip -- only the decorative text needs to fit, and that's
+  // plain flex content we fully control.
+  let txDateInput = $state('');
+  let minDT = $state('');
+  let maxDT = $state('');
+
   const MAX_CENTS = 99999999;
   let kpDisplay = $derived((kpCents / 100).toFixed(2));
   let step = $state(1); // 1 = amount, 2 = category + note
@@ -433,16 +454,38 @@
     addCcy = 'RM';
     kpCents = 0;
     noteValue = '';
+    // month is always the current, still-open cycle here (this sheet only
+    // ever adds to it), so there's no "next cycle" to bound against -- max
+    // is just "now". No lower bound at all for a month record from before
+    // `startedAt` existed -- omitting `min` entirely (DateTimeField treats
+    // '' as unset) is a safe degrade, not a bug to guard against further.
+    const bounds = cycleDatetimeBounds(month);
+    minDT = bounds.min;
+    maxDT = bounds.max;
+    txDateInput = bounds.max;
     step = 1;
     overspendMsg = '';
     overspendConfirmedFor = '';
   }
 
+  // Only run on an actual false->true open transition, not plain `let` --
+  // reset()/applyIntent() read banksList/month/goalList, which are reactive
+  // $derived values, so calling them from inside this effect silently makes
+  // THEM tracked dependencies of it too (same gotcha save()'s own comment
+  // above already documents for the db-write cascade). Gating on a change
+  // in `wasOpen` means a re-run caused by one of those stores updating
+  // while the sheet just sits open (e.g. focusing the date/time picker
+  // seems to trigger one on-device) sees `open === wasOpen` and skips
+  // reset() entirely -- the sheet no longer needs to guess which reads are
+  // "safe"; it just never lets an unrelated store update fire this again
+  // until the sheet actually closes and reopens.
+  let wasOpen = false;
   $effect(() => {
-    if (open) {
+    if (open && !wasOpen) {
       reset();
       applyIntent(intent);
     }
+    wasOpen = open;
   });
 
   function applyIntent(it) {
@@ -567,7 +610,15 @@
     const secondBank = secondBankId;
     const heldIn = heldInChoice;
     const note = noteValue.trim();
-    const now = new Date().toISOString();
+
+    const chosen = new Date(txDateInput);
+    if (isNaN(chosen)) return showToast('Pick a valid date and time');
+    if (chosen > new Date()) return showToast("Date can't be in the future");
+    if (month.startedAt && chosen < new Date(month.startedAt)) {
+      return showToast(`Date can't be before ${formatDate(month.startedAt)} — that's when this cycle started`);
+    }
+    const entryDate = chosen.toISOString();
+
     const bufferLabelChoice = selectedBufferLabel;
     const bufferLabelCustom = customBufferLabel.trim();
     const goals = goalList;
@@ -576,7 +627,7 @@
 
     if (mode === 'transfer') {
       if (!bankId || !secondBank || bankId === secondBank) return showToast('Pick two different banks first');
-      const transfers = [...(month.transfers || []), { date: now, amount: amt, fromBankId: bankId, toBankId: secondBank, note: note || undefined }];
+      const transfers = [...(month.transfers || []), { date: entryDate, amount: amt, fromBankId: bankId, toBankId: secondBank, note: note || undefined }];
       await db.months.update(month.key, { transfers });
       await adjustBankBalance(bankId, -amt);
       await adjustBankBalance(secondBank, amt);
@@ -598,7 +649,7 @@
         : month.additionalIncome > 0
           ? [{ date: month.startedAt || null, amount: month.additionalIncome, legacy: true }]
           : [];
-      const log = [...baseLog, { date: now, amount: amt, note: note || undefined, bankId }];
+      const log = [...baseLog, { date: entryDate, amount: amt, note: note || undefined, bankId }];
       const total = round2(log.reduce((s, e) => s + (e.amount || 0), 0));
       await db.months.update(month.key, { additionalIncomeLog: log, additionalIncome: total });
       await adjustBankBalance(bankId, amt);
@@ -617,7 +668,7 @@
       const overspend = checkReserveOverspend(bankId, amt, goals);
       if (!overspend.ok) return;
       const label = bufferLabelChoice === 'custom' ? bufferLabelCustom || 'Misc' : bufferLabelChoice || 'Misc';
-      const newExtra = { name: label, actual: amt, date: now, note: note || undefined, bankId: bankId || undefined };
+      const newExtra = { name: label, actual: amt, date: entryDate, note: note || undefined, bankId: bankId || undefined };
       let extras = [...(month.extras || []), newExtra];
       await db.months.update(month.key, { extras });
       if (bankId) await adjustBankBalance(bankId, -amt);
@@ -657,7 +708,7 @@
       // as JSON) keeps it an explicit null, matching what allocIsReserved's
       // own `'heldInBankId' in a` check expects a "given away" allocation to
       // look like.
-      const allocations = [...(goal.allocations || []), { date: now, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId }];
+      const allocations = [...(goal.allocations || []), { date: entryDate, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId }];
       await db.goals.update(goal.id, { allocations });
       // heldInBankId === bankId ("same"): the debit and credit would be the
       // exact same bank canceling out, so skip both writes entirely --
@@ -684,7 +735,7 @@
       const spendInRM = spendRM(goal, { amount: amt, ccy });
       const left = goalReserveLeft(goal);
       if (spendInRM > left + 0.005) return showToast(`Only RM ${fmt(left)} is reserved for ${goal.label}`);
-      const spends = [...(goal.spends || []), { date: now, cycleMonth: month.key, label: note || 'Spend', amount: amt, ccy, bankId }];
+      const spends = [...(goal.spends || []), { date: entryDate, cycleMonth: month.key, label: note || 'Spend', amount: amt, ccy, bankId }];
       await db.goals.update(goal.id, { spends });
       await adjustBankBalance(bankId, -spendInRM);
       showToast(`Spent ${ccy} ${fmt(amt)} · ${goal.label}`);
@@ -694,7 +745,7 @@
     }
 
     if (catKey === 'reimburse') {
-      const reimbursements = [...(month.reimbursements || []), { amount: amt, date: now, note: note || undefined, bankId: bankId || undefined }];
+      const reimbursements = [...(month.reimbursements || []), { amount: amt, date: entryDate, note: note || undefined, bankId: bankId || undefined }];
       await db.months.update(month.key, { reimbursements });
       if (bankId) await adjustBankBalance(bankId, amt);
       showToast(`Paid back to you · RM ${fmt(amt)}`);
@@ -706,7 +757,7 @@
     // A fixed category expense.
     const overspend = checkReserveOverspend(bankId, amt, goals);
     if (!overspend.ok) return;
-    const newTx = { amount: amt, date: now, note: note || undefined, bankId: bankId || undefined };
+    const newTx = { amount: amt, date: entryDate, note: note || undefined, bankId: bankId || undefined };
     let categories = month.categories.map((c) =>
       c.key === catKey ? { ...c, actual: c.actual + amt, transactions: [...(c.transactions || []), newTx] } : c
     );
@@ -787,6 +838,12 @@
         <button class="edit-amt" onclick={back}>edit</button>
       </div>
     <div class="add-scroll">
+    <div class="field-lbl" style="margin-top:2px;">Date & time</div>
+    <DateTimeField bind:value={txDateInput} min={minDT} max={maxDT} />
+    {#if minDT}
+      <p class="hint">Can't be before {formatDate(month.startedAt)} — that's when this cycle started.</p>
+    {/if}
+
     {#if addMode === 'expense'}
     <!-- Shown before Category (and defaulted from Home's focused card, see
        reset() in the script) rather than only appearing once a category is

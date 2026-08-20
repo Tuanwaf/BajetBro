@@ -20,7 +20,22 @@ export default defineConfig({
     // OneDrive's placeholder/sync locking and crashes Vite's native
     // fs.watch. Mirrors the "Personal financial data" and "Source data
     // images" sections of .gitignore.
-    watch: { ignored: ['**/bajetbro-*.json', '**/*.jpg', '**/*.jpeg', '**/*.png'] },
+    watch: {
+      ignored: [
+        '**/bajetbro-*.json',
+        '**/[Bb]ajet*[Dd]ata*.json',
+        '**/[Bb]ajetbro-[Ii]nitial*.json',
+        '**/*weird data*.json',
+        '**/*.jpg',
+        '**/*.jpeg',
+        '**/*.png',
+      ],
+    },
+    // Bind all interfaces so the dev server is reachable over Tailscale
+    // (e.g. from a phone) at the machine's Tailscale IP, not just localhost.
+    host: true,
+    port: 5173,
+    strictPort: true,
   },
   plugins: [
     svelte(),

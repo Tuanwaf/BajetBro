@@ -1,12 +1,13 @@
 <script>
   import { currentMonth } from '../lib/stores.js';
   import { computeReimbursedTotal } from '../lib/calc.js';
-  import { fmt } from '../lib/format.js';
+  import { fmt, toDatetimeLocalValue, cycleDatetimeBounds } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
+  import DateTimeField from '../lib/components/DateTimeField.svelte';
 
   let { open, onClose } = $props();
 
@@ -28,22 +29,34 @@
     return r.map((e, idx) => ({ e, idx })).sort((a, b) => new Date(b.e.date || 0) - new Date(a.e.date || 0));
   });
   let total = $derived(month ? computeReimbursedTotal(month) : 0);
+  // This sheet only ever shows the current, still-open month's own entries
+  // -- no "next cycle" to bound against, same as AddExpenseSheet.
+  let dtBounds = $derived(cycleDatetimeBounds(month));
 
   let editingIdx = $state(null);
   let confirmDeleteIdx = $state(null);
   let editAmt = $state('');
   let editNote = $state('');
+  let editDateInput = $state('');
 
   function startEdit(x) {
     editingIdx = x.idx;
     editAmt = String(x.e.amount);
     editNote = x.e.note || '';
+    editDateInput = toDatetimeLocalValue(new Date(x.e.date));
   }
   async function saveEdit() {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
+    const chosen = new Date(editDateInput);
+    if (isNaN(chosen)) return showToast('Pick a valid date and time');
+    if (chosen > new Date()) return showToast("Date can't be in the future");
+    if (month.startedAt && chosen < new Date(month.startedAt)) {
+      return showToast(`Date can't be before ${formatDate(month.startedAt)} — that's when this cycle started`);
+    }
+    const editDate = chosen.toISOString();
     const original = month.reimbursements[editingIdx];
-    const reimbursements = month.reimbursements.map((r, i) => (i === editingIdx ? { ...r, amount: amt, note: editNote.trim() || undefined } : r));
+    const reimbursements = month.reimbursements.map((r, i) => (i === editingIdx ? { ...r, amount: amt, note: editNote.trim() || undefined, date: editDate } : r));
     await db.months.update(month.key, { reimbursements });
     if (original.bankId) await adjustBankBalance(original.bankId, amt - original.amount);
     editingIdx = null;
@@ -84,6 +97,7 @@
           <div class="tx-edit">
             <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
             <input class="note-input" bind:value={editNote} placeholder="Note (e.g. July makan – Ali)" />
+            <DateTimeField bind:value={editDateInput} min={dtBounds.min} max={dtBounds.max} />
             <div style="display:flex; gap:8px;">
               <button class="io-btn" style="flex:1;" onclick={() => (editingIdx = null)}>Cancel</button>
               <button class="save-btn" style="flex:1; margin-top:0;" onclick={saveEdit}>Save</button>

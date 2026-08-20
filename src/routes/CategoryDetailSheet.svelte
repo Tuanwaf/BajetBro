@@ -1,13 +1,14 @@
 <script>
   import { currentMonth, template, hutangPots } from '../lib/stores.js';
   import { round2 } from '../lib/calc.js';
-  import { fmt } from '../lib/format.js';
+  import { fmt, toDatetimeLocalValue, cycleDatetimeBounds } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
+  import DateTimeField from '../lib/components/DateTimeField.svelte';
 
   let { open, category, onClose } = $props();
 
@@ -33,6 +34,10 @@
   function bankName(id) {
     return banksList.find((b) => b.bank.id === id)?.bank.name;
   }
+  // This sheet only ever shows the current, still-open month's own
+  // transactions -- no "next cycle" to bound against, same as
+  // AddExpenseSheet.
+  let dtBounds = $derived(cycleDatetimeBounds(month));
 
   let transactions = $derived.by(() => {
     const list = category?.transactions || [];
@@ -51,6 +56,7 @@
   let editCustomBufferLabel = $state('');
   let editPaid = $state(''); // amount paid back to you (reimbursement)
   let editPaidAbsolute = $state(false); // true once "edit total" or "clear" is tapped -- editPaid becomes the new total instead of an amount to add
+  let editDateInput = $state('');
 
   // Net cost of a tx = what you actually bore = full paid - paid back to you.
   const txNet = (tx) => round2((tx.amount || 0) - (tx.reimbursed || 0));
@@ -64,6 +70,7 @@
     editCustomBufferLabel = '';
     editPaid = ''; // amount to ADD to tx.reimbursed, not the new total
     editPaidAbsolute = false;
+    editDateInput = toDatetimeLocalValue(new Date(tx.date));
   }
   function cancelEdit() {
     editingIdx = null;
@@ -120,6 +127,13 @@
   async function commitEdit(tx) {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
+    const chosen = new Date(editDateInput);
+    if (isNaN(chosen)) return showToast('Pick a valid date and time');
+    if (chosen > new Date()) return showToast("Date can't be in the future");
+    if (month.startedAt && chosen < new Date(month.startedAt)) {
+      return showToast(`Date can't be before ${formatDate(month.startedAt)} — that's when this cycle started`);
+    }
+    const editDate = chosen.toISOString();
     const note = editNote.trim();
     const paidInput = parseFloat(editPaid) || 0;
     const paid = editPaidAbsolute
@@ -142,7 +156,7 @@
           : c
       );
       await writeCategories(cats);
-      const newExtra = { name: label, actual: newNet, date: tx.date, note: note || undefined, reimbursed: paid || undefined, bankId: tx.bankId };
+      const newExtra = { name: label, actual: newNet, date: editDate, note: note || undefined, reimbursed: paid || undefined, bankId: tx.bankId };
       let extras = [...(month.extras || []), newExtra];
       await db.months.update(month.key, { extras });
       if (srcKey === 'saving') await adjustPot(-oldNet);
@@ -174,7 +188,7 @@
     // to reflect the write we JUST made (liveQuery hasn't necessarily
     // re-emitted yet), so the reserve-reconciliation step re-locates it
     // through this local reference instead of re-reading `month`.
-    const newTx = { amount: amt, date: tx.date, note: note || undefined, reimbursed: paid || undefined, bankId: tx.bankId };
+    const newTx = { amount: amt, date: editDate, note: note || undefined, reimbursed: paid || undefined, bankId: tx.bankId };
     let finalCats;
 
     if (destKey === srcKey) {
@@ -259,6 +273,8 @@
               <div class="tx-edit">
                 <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
                 <input class="note-input" bind:value={editNote} placeholder="Note (optional)" />
+                <div class="mini-lbl">Date & time</div>
+                <DateTimeField bind:value={editDateInput} min={dtBounds.min} max={dtBounds.max} />
                 <div class="mini-lbl paid-hd">
                   <span>Paid back to you (bill split / pay first)</span>
                   {#if tx.reimbursed}

@@ -1,13 +1,14 @@
 <script>
   import { currentMonth, template, hutangPots } from '../lib/stores.js';
   import { round2 } from '../lib/calc.js';
-  import { fmt } from '../lib/format.js';
+  import { fmt, toDatetimeLocalValue, cycleDatetimeBounds } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_COLOR, BUFFER_LABEL_PRESETS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { banks as bankPreviewStore, adjustBankBalance, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import { sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
+  import DateTimeField from '../lib/components/DateTimeField.svelte';
 
   let { open, label, onClose } = $props();
 
@@ -30,6 +31,9 @@
   function bankName(id) {
     return banksList.find((b) => b.bank.id === id)?.bank.name;
   }
+  // This sheet only ever shows the current, still-open month's own entries
+  // -- no "next cycle" to bound against, same as AddExpenseSheet.
+  let dtBounds = $derived(cycleDatetimeBounds(month));
 
   // Entries under this label, each paired with its index in month.extras so
   // edits/deletes target the right row (index-based, not object identity).
@@ -51,6 +55,7 @@
   let editCustomBufferLabel = $state('');
   let editPaid = $state('');
   let editPaidAbsolute = $state(false); // true once "edit total" or "clear" is tapped -- editPaid becomes the new total instead of an amount to add
+  let editDateInput = $state('');
 
   // extra.actual is stored NET (full paid - paid back); reimbursed tracks the
   // payback so the full amount = actual + reimbursed.
@@ -65,6 +70,7 @@
     editCustomBufferLabel = bufferLabels.includes(x.e.name) ? '' : x.e.name;
     editPaid = ''; // amount to ADD to e.reimbursed, not the new total
     editPaidAbsolute = false;
+    editDateInput = toDatetimeLocalValue(new Date(x.e.date));
   }
   function cancelEdit() {
     editingIdx = null;
@@ -99,6 +105,13 @@
   async function saveEdit() {
     const amt = parseFloat(editAmt);
     if (!amt) return showToast('Enter an amount first');
+    const chosen = new Date(editDateInput);
+    if (isNaN(chosen)) return showToast('Pick a valid date and time');
+    if (chosen > new Date()) return showToast("Date can't be in the future");
+    if (month.startedAt && chosen < new Date(month.startedAt)) {
+      return showToast(`Date can't be before ${formatDate(month.startedAt)} — that's when this cycle started`);
+    }
+    const editDate = chosen.toISOString();
     const paidInput = parseFloat(editPaid) || 0;
     const original = month.extras[editingIdx];
     const paid = editPaidAbsolute
@@ -112,7 +125,7 @@
       // Leaving Buffer entirely for a fixed category.
       const extras = month.extras.filter((_, i) => i !== editingIdx);
       await db.months.update(month.key, { extras });
-      const newTx = { amount: amt, date: original.date, note: note || undefined, reimbursed: paid || undefined, bankId: original.bankId };
+      const newTx = { amount: amt, date: editDate, note: note || undefined, reimbursed: paid || undefined, bankId: original.bankId };
       let cats = month.categories.map((c) =>
         c.key === destKey ? { ...c, actual: round2(c.actual + newNet), transactions: [...(c.transactions || []), newTx] } : c
       );
@@ -141,7 +154,7 @@
 
     const newLabel = editBufferLabel === 'custom' ? editCustomBufferLabel.trim() || 'Misc' : editBufferLabel || label;
     let extras = month.extras.map((e, i) =>
-      i === editingIdx ? { ...e, actual: newNet, reimbursed: paid || undefined, note: note || undefined, name: newLabel } : e
+      i === editingIdx ? { ...e, actual: newNet, reimbursed: paid || undefined, note: note || undefined, name: newLabel, date: editDate } : e
     );
     await db.months.update(month.key, { extras });
     // Compare NET debits, not gross amounts -- see the branch above for why.
@@ -220,6 +233,8 @@
           <div class="tx-edit">
             <input class="note-input num" bind:value={editAmt} inputmode="decimal" placeholder="0.00" />
             <input class="note-input" bind:value={editNote} placeholder="Note (e.g. Shopee, Tiktok)" />
+            <div class="mini-lbl">Date & time</div>
+            <DateTimeField bind:value={editDateInput} min={dtBounds.min} max={dtBounds.max} />
             <div class="mini-lbl paid-hd">
               <span>Paid back to you (bill split / pay first)</span>
               {#if x.e.reimbursed}

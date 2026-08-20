@@ -1,5 +1,5 @@
 <script>
-  import { goals, loans, currentMonth as currentMonthStore } from '../lib/stores.js';
+  import { goals, loans, currentMonth as currentMonthStore, closedMonths } from '../lib/stores.js';
   import { banks as bankPreviewStore, adjustBankBalance, computeBankReserved } from '../lib/bankPreviewStore.js';
   import {
     goalAllocated,
@@ -10,7 +10,7 @@
     spendRM,
     round2,
   } from '../lib/calc.js';
-  import { fmt } from '../lib/format.js';
+  import { fmt, formatDate, toDatetimeLocalValue, cycleDatetimeBounds } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { openAdd, sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
@@ -18,6 +18,32 @@
   import db from '../lib/db.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
   import LoanLogSheet from './LoanLogSheet.svelte';
+  import DateTimeField from '../lib/components/DateTimeField.svelte';
+
+  // Every month ever tracked, oldest first -- for looking up which cycle a
+  // given allocation/spend's own `cycleMonth` belongs to, so its editable
+  // date range can be bounded by THAT cycle's start/end rather than
+  // whichever cycle happens to be open right now (goals, unlike a category
+  // or Buffer entry, keep their full history visible and editable across
+  // every past cycle, not just the current one). Sorted by `key` (e.g.
+  // "2026-01"), not `order` -- `order` is just the calendar month number
+  // (1-12, see EndMonthSheet's confirmStartCycle), which wraps every
+  // December->January and would sort a new year's months before the
+  // December that actually preceded them.
+  let allMonthsSorted = $derived(
+    [...($closedMonths ?? []), $currentMonthStore].filter(Boolean).sort((a, b) => a.key.localeCompare(b.key))
+  );
+  // null when `key` doesn't resolve to a tracked month (e.g. a legacy entry
+  // from before cycleMonth existed) -- callers treat that as "don't
+  // constrain, and don't offer a date editor at all" (see startEditAlloc/
+  // startEditSpend), same safe-degrade as AddExpenseSheet's missing-
+  // startedAt case.
+  function cycleBoundsForKey(key) {
+    if (!key) return null;
+    const idx = allMonthsSorted.findIndex((m) => m.key === key);
+    if (idx === -1) return null;
+    return cycleDatetimeBounds(allMonthsSorted[idx], allMonthsSorted[idx + 1] || null);
+  }
 
   // Sentinel for "take from goal" sources that were never tied to a real
   // bank -- a goal's starting balance, entered at creation. Never collides
@@ -386,16 +412,33 @@
   let confirmDeleteSpendIdx = $state(null);
   let editSpendLabel = $state('');
   let editSpendAmt = $state('');
+  // '' whenever the entry's own cycleMonth doesn't resolve to a tracked
+  // month (legacy data) -- the date editor is simply not offered then (see
+  // markup), same as editSpendBounds being null.
+  let editSpendDateInput = $state('');
+  let editSpendBounds = $state(null);
   function startEditSpend(g, idx) {
     editSpendIdx = idx;
     editSpendLabel = g.spends[idx].label;
     editSpendAmt = String(g.spends[idx].amount);
+    editSpendBounds = cycleBoundsForKey(g.spends[idx].cycleMonth);
+    editSpendDateInput = editSpendBounds ? toDatetimeLocalValue(new Date(g.spends[idx].date)) : '';
   }
   async function saveEditSpend(g) {
     const amt = parseFloat(editSpendAmt);
     if (!amt) return showToast('Enter an amount first');
     const s = g.spends[editSpendIdx];
-    const newS = { ...s, label: editSpendLabel.trim() || 'Spend', amount: amt };
+    let dateOverride = {};
+    if (editSpendBounds) {
+      const chosen = new Date(editSpendDateInput);
+      if (isNaN(chosen)) return showToast('Pick a valid date and time');
+      if (chosen > new Date()) return showToast("Date can't be in the future");
+      if (editSpendBounds.min && toDatetimeLocalValue(chosen) < editSpendBounds.min) {
+        return showToast(`Date can't be before ${formatDate(editSpendBounds.min)} — that's when this cycle started`);
+      }
+      dateOverride = { date: chosen.toISOString() };
+    }
+    const newS = { ...s, label: editSpendLabel.trim() || 'Spend', amount: amt, ...dateOverride };
     const spendsArr = g.spends.map((x, i) => (i === editSpendIdx ? newS : x));
     await db.transaction('rw', db.goals, db.banks, async () => {
       await db.goals.update(g.id, { spends: spendsArr });
@@ -416,9 +459,18 @@
   let editAllocIdx = $state(null);
   let confirmDeleteAllocIdx = $state(null);
   let editAllocAmt = $state('');
+  // '' / null when this allocation is a `starting` balance (no real "when it
+  // happened" to edit -- see allocLabel's comment) or its cycleMonth doesn't
+  // resolve to a tracked month (legacy data) -- the date editor is simply
+  // not offered then (see markup).
+  let editAllocDateInput = $state('');
+  let editAllocBounds = $state(null);
   function startEditAlloc(g, idx) {
     editAllocIdx = idx;
-    editAllocAmt = String(Math.abs(g.allocations[idx].amount));
+    const a = g.allocations[idx];
+    editAllocAmt = String(Math.abs(a.amount));
+    editAllocBounds = a.starting ? null : cycleBoundsForKey(a.cycleMonth);
+    editAllocDateInput = editAllocBounds ? toDatetimeLocalValue(new Date(a.date)) : '';
   }
   // A negative amount marks a "take from goal" withdrawal (see openTake/
   // saveTake below) -- its bank effect is the mirror image of a normal
@@ -429,9 +481,19 @@
     const inputAmt = parseFloat(editAllocAmt);
     if (!inputAmt) return showToast('Enter an amount first');
     const a = g.allocations[editAllocIdx];
+    let dateOverride = {};
+    if (editAllocBounds) {
+      const chosen = new Date(editAllocDateInput);
+      if (isNaN(chosen)) return showToast('Pick a valid date and time');
+      if (chosen > new Date()) return showToast("Date can't be in the future");
+      if (editAllocBounds.min && toDatetimeLocalValue(chosen) < editAllocBounds.min) {
+        return showToast(`Date can't be before ${formatDate(editAllocBounds.min)} — that's when this cycle started`);
+      }
+      dateOverride = { date: chosen.toISOString() };
+    }
     const isTake = a.amount < 0;
     const newAmount = isTake ? -Math.abs(inputAmt) : Math.abs(inputAmt);
-    const allocations = g.allocations.map((x, i) => (i === editAllocIdx ? { ...x, amount: newAmount } : x));
+    const allocations = g.allocations.map((x, i) => (i === editAllocIdx ? { ...x, amount: newAmount, ...dateOverride } : x));
     await db.transaction('rw', db.goals, db.banks, async () => {
       await db.goals.update(g.id, { allocations });
       if (isTake) {
@@ -819,6 +881,9 @@
             {#if editAllocIdx === i}
               <div class="dividend-edit">
                 <input class="note-input num" bind:value={editAllocAmt} inputmode="decimal" placeholder="0.00" />
+                {#if editAllocBounds}
+                  <DateTimeField bind:value={editAllocDateInput} min={editAllocBounds.min} max={editAllocBounds.max} />
+                {/if}
                 <div style="display:flex; gap:8px;">
                   <button class="io-btn" style="flex:1;" onclick={() => (editAllocIdx = null)}>Cancel</button>
                   <button class="save-btn" style="flex:1; margin-top:0;" onclick={() => saveEditAlloc(g)}>Save</button>
@@ -860,6 +925,9 @@
                 <div class="dividend-edit">
                   <input class="note-input" bind:value={editSpendLabel} placeholder="What was it for?" />
                   <input class="note-input num" bind:value={editSpendAmt} inputmode="decimal" placeholder="0.00" />
+                  {#if editSpendBounds}
+                    <DateTimeField bind:value={editSpendDateInput} min={editSpendBounds.min} max={editSpendBounds.max} />
+                  {/if}
                   <div style="display:flex; gap:8px;">
                     <button class="io-btn" style="flex:1;" onclick={() => (editSpendIdx = null)}>Cancel</button>
                     <button class="save-btn" style="flex:1; margin-top:0;" onclick={() => saveEditSpend(g)}>Save</button>
