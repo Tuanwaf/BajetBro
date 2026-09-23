@@ -41,21 +41,21 @@ export const MAX_FREEZES = 2;
 export const REVIVE_DAYS = 3;
 
 // `pastel` is the soft card background behind that tier's buddy (Home card,
-// Streak page hero) -- a gradient, so the Legend tier can go holographic.
+// Streak page hero) -- a gradient, so the Tycoon tier can go holographic.
 // `fire` is [core, mid, edge] for that tier's SVG flame (StreakFlame);
-// `rainbow` makes it cycle through hues (Legend); `glow` gives it a soft
+// `rainbow` makes it cycle through hues (Tycoon); `glow` gives it a soft
 // aura in its own colour (the top tiers).
 export const TIERS = [
   { min: 1, max: 6, img: tier1, name: 'Starter', color: '#ff7a2e', pastel: 'linear-gradient(135deg, #fff1e6 0%, #ffe0cc 100%)', fire: ['#fff1a8', '#ffa02e', '#ff4d00'] },
   { min: 7, max: 29, img: tier2, name: 'On Fire', color: '#e5323b', pastel: 'linear-gradient(135deg, #fff0f0 0%, #ffdada 100%)', fire: ['#ffd9a8', '#ff4a3d', '#b3001e'] },
   { min: 30, max: 79, img: tier3, name: 'Planner', color: '#8b4dff', pastel: 'linear-gradient(135deg, #f5efff 0%, #e6dbff 100%)', fire: ['#f5e8ff', '#b07cff', '#5b21d6'] },
-  { min: 80, max: 149, img: tier4, name: 'Royal', color: '#f2b632', pastel: 'linear-gradient(135deg, #fffaea 0%, #ffefc2 100%)', fire: ['#fffbe0', '#ffd24a', '#d98a00'] },
-  { min: 150, max: 199, img: tier5, name: 'Legend', color: '#b37bff', pastel: 'linear-gradient(135deg, #ffe9f6 0%, #eae6ff 50%, #dff4ff 100%)', fire: ['#ffffff', '#9a7bff', '#ff4fc8'], rainbow: true },
-  { min: 200, max: 249, img: tier6, name: 'Emerald', color: '#16a34a', pastel: 'linear-gradient(135deg, #effdf3 0%, #d3f7df 100%)', fire: ['#eaffd9', '#3fdc72', '#0b8a3e'] },
-  { min: 250, max: 299, img: tier7, name: 'Sapphire', color: '#2563eb', pastel: 'linear-gradient(135deg, #eef6ff 0%, #d6e8ff 100%)', fire: ['#e6f4ff', '#4ea8ff', '#1d4ed8'] },
-  { min: 300, max: 349, img: tier8, name: 'Emperor', color: '#c81e1e', pastel: 'linear-gradient(135deg, #fff1ec 0%, #ffe1d9 55%, #fff2cf 100%)', fire: ['#fff3b0', '#ff5a3c', '#b8121f'], glow: true },
-  { min: 350, max: 399, img: tier9, name: 'Cosmic', color: '#6d3cff', pastel: 'linear-gradient(135deg, #f1ecff 0%, #e2e6ff 50%, #f6e8ff 100%)', fire: ['#ffffff', '#b18cff', '#3b1fa8'], glow: true },
-  { min: 400, max: Infinity, img: tier10, name: 'Celestial', color: '#d4a017', pastel: 'linear-gradient(135deg, #fffdf6 0%, #fff4d6 100%)', fire: ['#ffffff', '#ffe7a0', '#d9a520'], glow: true },
+  { min: 80, max: 149, img: tier4, name: 'Grower', color: '#2f9e44', pastel: 'linear-gradient(135deg, #f0fbef 0%, #d6f2d3 100%)', fire: ['#eaffd9', '#5fd35a', '#1f7a2e'] },
+  { min: 150, max: 199, img: tier5, name: 'Frosty', color: '#1e88e5', pastel: 'linear-gradient(135deg, #eef7ff 0%, #d3eaff 100%)', fire: ['#e8f6ff', '#56b4ff', '#1560c9'] },
+  { min: 200, max: 249, img: tier6, name: 'Golden', color: '#e6a817', pastel: 'linear-gradient(135deg, #fffaea 0%, #ffedb8 100%)', fire: ['#fffbe0', '#ffd24a', '#d98a00'] },
+  { min: 250, max: 299, img: tier7, name: 'Emperor', color: '#c81e1e', pastel: 'linear-gradient(135deg, #fff1ec 0%, #ffe1d9 55%, #fff2cf 100%)', fire: ['#fff3b0', '#ff5a3c', '#b8121f'] },
+  { min: 300, max: 349, img: tier8, name: 'Cosmic', color: '#7c3aed', pastel: 'linear-gradient(135deg, #f3ecff 0%, #e6e2ff 50%, #e3f1ff 100%)', fire: ['#ffffff', '#b18cff', '#4c1fc0'], glow: true },
+  { min: 350, max: 399, img: tier9, name: 'Tycoon', color: '#a855f7', pastel: 'linear-gradient(135deg, #ffe9f6 0%, #e9e6ff 35%, #dff4ff 70%, #e6ffef 100%)', fire: ['#ffffff', '#3ee8ff', '#ff3fb4'], rainbow: true },
+  { min: 400, max: Infinity, img: tier10, name: 'Celestial', color: '#d4a017', pastel: 'linear-gradient(135deg, #fffef9 0%, #fdf6e3 55%, #fff0c7 100%)', fire: ['#ffffff', '#ffe7a0', '#d9a520'], glow: true },
 ];
 export const GREY_FIRE = ['#f1f1f3', '#c9c9cf', '#9d9da5'];
 export const GREY_PASTEL = 'linear-gradient(135deg, #f4f4f5 0%, #e7e7ea 100%)';
