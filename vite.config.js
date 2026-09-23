@@ -8,6 +8,27 @@ import { readFileSync } from 'node:fs'
 // stale cached PWA build, which has been a real recurring question.
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 
+// Release notes live in release-notes.json, keyed by version. Every build
+// emits them as version.json next to the app -- the update banner fetches
+// the LIVE copy (bypassing every cache) to say what the waiting update is and
+// what's in it. Not precached (the globPatterns below skip .json), so it
+// can't go stale behind the service worker.
+function versionJson() {
+  return {
+    name: 'bajetbro-version-json',
+    apply: 'build',
+    generateBundle() {
+      const notes = JSON.parse(readFileSync(new URL('./release-notes.json', import.meta.url)))
+      if (!notes[pkg.version]) this.warn(`release-notes.json has no notes for v${pkg.version} -- the update banner will show none`)
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ version: pkg.version, notes: notes[pkg.version] ?? [] }, null, 2),
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base: '/BajetBro/',
@@ -39,8 +60,23 @@ export default defineConfig({
   },
   plugins: [
     svelte(),
+    versionJson(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a downloaded update WAITS instead of taking over (and
+      // reloading) on its own -- lib/updates.js shows the update banner and
+      // only activates it when the user taps Update. Registration happens in
+      // lib/updates.js via virtual:pwa-register, so nothing is injected.
+      registerType: 'prompt',
+      injectRegister: false,
+      // Default only precaches js/css/html -- the streak buddies (webp) and
+      // icons need to be there offline too.
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,png,webp,svg,ico}'],
+        // Take control of the page on the very FIRST install, so a new user
+        // is offline-ready straight away. Updates are unaffected: in
+        // 'prompt' mode a new worker still waits until the user taps Update.
+        clientsClaim: true,
+      },
       manifest: {
         name: 'BajetBro',
         short_name: 'BajetBro',

@@ -55,4 +55,7 @@ export const loans = fromLiveQuery(() => db.loans.orderBy('date').reverse().toAr
 export const givingGoalsEnabled = fromLiveQuery(async () => !!(await db.meta.get('givingGoalsEnabled'))?.value, false);
 export const tabungHajiEnabled = fromLiveQuery(async () => !!(await db.meta.get('tabungHajiEnabled'))?.value, false);
 
+// Dev mode (tap the version number in Settings 7 times) -- per device.
+export const devModeEnabled = fromLiveQuery(async () => !!(await db.meta.get('devMode'))?.value, false);
+
 export const userName = fromLiveQuery(async () => (await db.meta.get('userName'))?.value || '', '');

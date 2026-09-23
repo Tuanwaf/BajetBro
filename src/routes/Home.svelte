@@ -19,6 +19,9 @@
   import BufferDetailSheet from './BufferDetailSheet.svelte';
   import ReimbursementsSheet from './ReimbursementsSheet.svelte';
   import BankCarousel from '../lib/components/BankCarousel.svelte';
+  import StreakCard from '../lib/components/StreakCard.svelte';
+  import StreakSheet from './StreakSheet.svelte';
+  import { streakSheetOpen } from '../lib/streak.js';
   import BankTransactionsSheet from './BankTransactionsSheet.svelte';
   import { banks as bankPreviewStore, focusedBankIndex } from '../lib/bankPreviewStore.js';
 
@@ -124,7 +127,12 @@
   // Home's own real content needs to be display:none rather than just
   // visually covered -- these now share the root document scroll instead
   // of being position:fixed overlays with their own scroller.
-  let anySheetOpen = $derived(detailCategoryKey != null || bufferLabel != null || reimburseOpen || bankTxnSheetOpen);
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  }
+
+  let anySheetOpen = $derived(detailCategoryKey != null || bufferLabel != null || reimburseOpen || bankTxnSheetOpen || $streakSheetOpen);
   $effect(() => {
     anySheetOpen;
     window.scrollTo(0, 0);
@@ -151,7 +159,7 @@
 
 <div style:display={anySheetOpen ? 'none' : 'contents'}>
 <div class="greet-row">
-  <h2 class="title">Hey{$userName ? `, ${$userName}` : ''} 👋</h2>
+  <h2 class="title">{greeting()}{$userName ? `, ${$userName}` : ''} 👋</h2>
   <span class="pill gold cycle-pill">{month.label} {year}</span>
 </div>
 
@@ -159,6 +167,13 @@
     <div data-guide="balance-remaining balance-stats">
       <BankCarousel banks={bankPreview} activeIndex={activeBankIndex} onNavigate={(i) => focusedBankIndex.set(i)} />
     </div>
+  {/if}
+
+  <!-- Balance first (it's why the app gets opened), streak right under it --
+       still above the fold at its compact height. -->
+  <div class="streak-slot"><StreakCard onOpen={() => streakSheetOpen.set(true)} /></div>
+
+  {#if activeBank}
 
     <div class="section-hd">
       <h3>Recent · {activeBank.bank.name}</h3>
@@ -279,6 +294,7 @@
 <CategoryDetailSheet open={detailCategoryKey != null} category={detailCategory} onClose={() => (detailCategoryKey = null)} />
 <BufferDetailSheet open={bufferLabel != null} label={bufferLabel} onClose={() => (bufferLabel = null)} />
 <ReimbursementsSheet open={reimburseOpen} onClose={() => (reimburseOpen = false)} />
+<StreakSheet open={$streakSheetOpen} onClose={() => streakSheetOpen.set(false)} />
 <BankTransactionsSheet open={bankTxnSheetOpen} bank={activeBank?.bank} transactions={activeBank?.transactions ?? []} onClose={() => (bankTxnSheetOpen = false)} />
 
 <style>
@@ -287,9 +303,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    margin: 14px 0 16px;
+    margin: 14px 0 14px;
   }
-  .greet-row h2.title { margin: 0; }
+  /* Mixed case and a little smaller than the app-wide uppercase title --
+     "Good afternoon, <name>" is much longer than the old "Hey, <name>" and
+     ran to three lines in caps. */
+  .streak-slot { margin-top: 14px; }
+  .greet-row h2.title { margin: 0; font-size: 24px; line-height: 1.15; text-transform: none; }
   .cycle-pill {
     flex-shrink: 0;
     white-space: nowrap;

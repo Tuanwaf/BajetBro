@@ -1,4 +1,5 @@
 <script>
+  import { recordStreakActivity } from '../lib/streak.js';
   import { goals, loans, currentMonth as currentMonthStore, closedMonths } from '../lib/stores.js';
   import { banks as bankPreviewStore, adjustBankBalance, computeBankReserved } from '../lib/bankPreviewStore.js';
   import {
@@ -279,7 +280,13 @@
   // Describes where one allocation's money actually went, for the
   // Contributions list -- the giving/reserving distinction is now just
   // whether heldInBankId is set, not a goal-level type.
+  // A note typed when adding to the goal (see AddExpenseSheet) leads the
+  // line; the bank-movement description still follows it.
   function allocLabel(a) {
+    const base = allocBaseLabel(a);
+    return a.note ? `${a.note} · ${base}` : base;
+  }
+  function allocBaseLabel(a) {
     if (a.starting) return a.fromBankId ? `Starting balance · already in ${bankName(a.fromBankId) ?? 'this bank'}` : 'Starting balance';
     if (a.amount < 0) {
       if (a.fromUntracked) {
@@ -591,6 +598,7 @@
       }
     });
     takeOpen = false;
+    recordStreakActivity();
     showToast(`Took RM ${fmt(amt)} out of ${g.label}`);
   }
 

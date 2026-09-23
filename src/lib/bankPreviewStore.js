@@ -172,9 +172,9 @@ export function computeBankActivity(month, allGoals, bankId) {
       if (a.fromBankId === bankId && a.heldInBankId == null) {
         entries.push({ note: a.note || `Given to ${g.label}`, date: a.date, amount: a.amount, income: false, color: g.color, source: { kind: 'goalAllocation', goalId: g.id, alloc: a } });
       } else if (a.fromBankId === bankId && a.heldInBankId && a.heldInBankId !== bankId) {
-        entries.push({ note: `Reserved for ${g.label}`, date: a.date, amount: a.amount, income: false, neutral: true, color: g.color, source: { kind: 'goalAllocation', goalId: g.id, alloc: a } });
+        entries.push({ note: a.note ? `${a.note} · Reserved for ${g.label}` : `Reserved for ${g.label}`, date: a.date, amount: a.amount, income: false, neutral: true, color: g.color, source: { kind: 'goalAllocation', goalId: g.id, alloc: a } });
       } else if (a.heldInBankId === bankId && a.fromBankId !== bankId) {
-        entries.push({ note: `Reserved for ${g.label}`, date: a.date, amount: a.amount, income: true, neutral: true, color: g.color, source: { kind: 'goalAllocation', goalId: g.id, alloc: a } });
+        entries.push({ note: a.note ? `${a.note} · Reserved for ${g.label}` : `Reserved for ${g.label}`, date: a.date, amount: a.amount, income: true, neutral: true, color: g.color, source: { kind: 'goalAllocation', goalId: g.id, alloc: a } });
       }
     }
     for (const s of g.spends || []) {

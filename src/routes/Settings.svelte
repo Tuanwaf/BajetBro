@@ -1,11 +1,12 @@
 <script>
-  import { template, currentMonth, userName } from '../lib/stores.js';
+  import { template, currentMonth, userName, devModeEnabled } from '../lib/stores.js';
   import { computeBufferPlannedLive, computeBankFreeTotal, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
   import { BUFFER_LABEL_PRESETS, GOAL_COLORS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
+  import DevStreakPanel from '../lib/components/DevStreakPanel.svelte';
   // Guided tour is disabled for now -- see the commented-out "Help" section
   // below. Uncomment this import alongside it to bring the button back.
   // import { startTour } from '../lib/tour.js';
@@ -240,6 +241,20 @@
     await exportBackup();
     showToast('Exported — save this file somewhere safe');
   }
+
+  // Hidden switch: 7 quick taps on the version number toggles dev mode.
+  let versionTaps = 0;
+  let versionTapTimer;
+  async function tapVersion() {
+    versionTaps++;
+    clearTimeout(versionTapTimer);
+    versionTapTimer = setTimeout(() => (versionTaps = 0), 1500);
+    if (versionTaps < 7) return;
+    versionTaps = 0;
+    const on = !$devModeEnabled;
+    await db.meta.put({ key: 'devMode', value: on });
+    showToast(on ? 'Dev mode on — see the bottom of Settings' : 'Dev mode off');
+  }
 </script>
 
 <div style:display={manageBanksOpen ? 'none' : 'contents'}>
@@ -413,10 +428,15 @@ Guided tour disabled for now -- revisit later if still wanted.
   </div>
 {/if}
 
+{#if import.meta.env.DEV || $devModeEnabled}
+  <DevStreakPanel />
+{/if}
+
 <!-- Bumped by hand on every push -- check this against what you were told
      to expect to confirm the installed app actually picked up the latest
      deploy, not a stale cached build. -->
-<p class="hint" style="text-align:center; margin-top:22px;">BajetBro v{__APP_VERSION__}</p>
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+<p class="hint" style="text-align:center; margin-top:22px; user-select:none;" onclick={tapVersion}>BajetBro v{__APP_VERSION__}</p>
 </div>
 
 <ManageBanksSheet open={manageBanksOpen} onClose={() => (manageBanksOpen = false)} />

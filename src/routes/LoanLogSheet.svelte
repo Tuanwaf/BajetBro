@@ -6,6 +6,7 @@
   import db from '../lib/db.js';
   import { sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
+  import { recordStreakActivity } from '../lib/streak.js';
 
   let { open, onClose } = $props();
 
@@ -57,6 +58,7 @@
       date: new Date().toISOString(),
     });
     adding = false;
+    recordStreakActivity();
     showToast(`Logged · ${newDirection === 'lent' ? 'lent to' : 'borrowed from'} ${person}`);
   }
 

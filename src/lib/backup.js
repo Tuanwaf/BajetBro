@@ -3,6 +3,7 @@ import { migrateV1 } from './migrate.js';
 import { initPersonalizationFlags } from './personalization.js';
 import { endTour } from './tour.js';
 import { backfillSingleBank, backfillMissingBankTags, backfillSalaryCredit } from './bankPreviewStore.js';
+import { computeStreak } from './streak.js';
 
 // v3 -- adds `banks` (see feature/multi-bank, db.js v4). A v1/v2 backup has
 // no bank list at all; importing one backfills a single real bank right
@@ -13,7 +14,7 @@ import { backfillSingleBank, backfillMissingBankTags, backfillSalaryCredit } fro
 const SCHEMA_VERSION = 3;
 
 export async function exportBackup() {
-  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans, banks, givingGoalsEnabled, tabungHajiEnabled] = await Promise.all([
+  const [template, months, hutangPots, tabungHaji, dividends, goals, savingsSpends, loans, banks, givingGoalsEnabled, tabungHajiEnabled, streakDaysRec] = await Promise.all([
     db.template.get('current'),
     db.months.toArray(),
     db.hutangPots.toArray(),
@@ -25,6 +26,7 @@ export async function exportBackup() {
     db.banks.toArray(),
     db.meta.get('givingGoalsEnabled'),
     db.meta.get('tabungHajiEnabled'),
+    db.meta.get('streakDays'),
   ]);
 
   const payload = {
@@ -41,6 +43,7 @@ export async function exportBackup() {
     banks,
     givingGoalsEnabled: !!givingGoalsEnabled?.value,
     tabungHajiEnabled: !!tabungHajiEnabled?.value,
+    streakDays: streakDaysRec?.value ?? [],
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -155,6 +158,13 @@ export async function importBackup(file) {
 
       if (data.givingGoalsEnabled) await db.meta.put({ key: 'givingGoalsEnabled', value: true });
       if (data.tabungHajiEnabled) await db.meta.put({ key: 'tabungHajiEnabled', value: true });
+      // Older backups predate streaks -- leave whatever this device has.
+      if (Array.isArray(data.streakDays)) {
+        await db.meta.put({ key: 'streakDays', value: data.streakDays });
+        // Count every freeze in the imported history as already seen, so the
+        // Home card doesn't play a freeze animation for old gaps.
+        await db.meta.put({ key: 'streakFreezesSeen', value: computeStreak(data.streakDays).freezesUsed });
+      }
     }
   );
 

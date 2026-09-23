@@ -10,6 +10,8 @@
   import { currentView, openSheetCount } from '../lib/viewStore.js';
   import { banks as bankPreviewStore, focusedBankIndex, adjustBankBalance, computeBankReserved, reconcileGoalReserve } from '../lib/bankPreviewStore.js';
   import BankIcon from '../lib/components/BankIcon.svelte';
+  import { loadNoteHistory, suggestNotes } from '../lib/noteHistory.js';
+  import { recordStreakActivity } from '../lib/streak.js';
 
   let { open, onClose, intent = null, originRect = null } = $props();
 
@@ -335,6 +337,51 @@
   let kpCents = $state(0);
   let noteValue = $state('');
 
+  // Remembered notes -- most entries repeat the same few places per
+  // category, so the note field offers what was typed before in whichever
+  // category/mode is currently picked (see lib/noteHistory.js). Loaded fresh
+  // on each open, so entries saved or edited elsewhere are picked up.
+  let noteHistory = $state({});
+  let noteScope = $derived.by(() => {
+    if (addMode === 'income') return 'income';
+    if (addMode === 'transfer') return 'transfer';
+    if (!selectedCatKey) return null;
+    if (selectedCatKey === 'buffer' || selectedCatKey === 'reimburse') return selectedCatKey;
+    if (selectedCatKey === 'spendgoal') return selectedGoalId ? `goal:${selectedGoalId}` : null;
+    if (selectedCatKey === 'addgoal') return selectedGoalId ? `alloc:${selectedGoalId}` : null;
+    return `cat:${selectedCatKey}`;
+  });
+  // Google-style: the list drops down under the field only while it's
+  // focused, and narrows as you type.
+  let noteFocused = $state(false);
+  let noteInputEl = $state(null);
+  let noteSuggestions = $derived(noteFocused ? suggestNotes(noteHistory, noteScope, noteValue, 5) : []);
+
+  function onNoteFocus() {
+    noteFocused = true;
+    // The field sits near the bottom of the sheet, so on a phone the
+    // keyboard covers anything under it -- scroll it up to the top of
+    // .add-scroll once the keyboard has had time to come up, leaving the
+    // list visible between the field and the keyboard.
+    setTimeout(() => {
+      if (noteFocused) noteInputEl?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 300);
+  }
+  function pickNote(text) {
+    noteValue = text;
+    noteFocused = false;
+    // Picked = done typing; drop the keyboard so Save is right there.
+    noteInputEl?.blur();
+  }
+  // Splits a suggestion into the part already typed and the rest, so the
+  // rest can be bolded like Google does. Only for prefix matches -- a
+  // mid-word match is shown plain.
+  function splitTyped(text) {
+    const q = noteValue.trim();
+    if (q && text.toLowerCase().startsWith(q.toLowerCase())) return [text.slice(0, q.length), text.slice(q.length)];
+    return ['', text];
+  }
+
   // When this entry actually happened -- defaults to right now, but
   // adjustable back to any point in the CURRENT cycle. Bounded by
   // month.startedAt (the cycle's real start, which can be in the previous
@@ -484,6 +531,9 @@
     if (open && !wasOpen) {
       reset();
       applyIntent(intent);
+      loadNoteHistory()
+        .then((h) => (noteHistory = h))
+        .catch((e) => console.error('[BajetBro] note history failed:', e));
     }
     wasOpen = open;
   });
@@ -633,6 +683,7 @@
       await adjustBankBalance(secondBank, amt);
       const toBankName = banksList.find((b) => b.bank.id === secondBank)?.bank.name ?? '';
       showToast(`Moved RM ${fmt(amt)} to ${toBankName}`);
+      recordStreakActivity();
       onClose();
       currentView.set('home');
       return;
@@ -654,6 +705,7 @@
       await db.months.update(month.key, { additionalIncomeLog: log, additionalIncome: total });
       await adjustBankBalance(bankId, amt);
       showToast(`Saved RM ${fmt(amt)} · Income`);
+      recordStreakActivity();
       onClose();
       currentView.set('home');
       return;
@@ -685,6 +737,7 @@
         await db.template.put({ ...tmpl, bufferLabels: [...bufferLabels, label] });
       }
       showToast(`Saved RM ${fmt(amt)} · Buffer / ${label}`);
+      recordStreakActivity();
       onClose();
       currentView.set('home');
       return;
@@ -708,7 +761,7 @@
       // as JSON) keeps it an explicit null, matching what allocIsReserved's
       // own `'heldInBankId' in a` check expects a "given away" allocation to
       // look like.
-      const allocations = [...(goal.allocations || []), { date: entryDate, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId }];
+      const allocations = [...(goal.allocations || []), { date: entryDate, cycleMonth: month.key, amount: applied, fromBankId: bankId, heldInBankId, note: note || undefined }];
       await db.goals.update(goal.id, { allocations });
       // heldInBankId === bankId ("same"): the debit and credit would be the
       // exact same bank canceling out, so skip both writes entirely --
@@ -721,6 +774,7 @@
       }
       const verb = heldInBankId == null ? 'Given to' : 'Reserved for';
       showToast(`${verb} ${goal.label} · RM ${fmt(applied)}${applied < amt ? ' (capped to target)' : ''}`);
+      recordStreakActivity();
       onClose();
       currentView.set('goals');
       return;
@@ -739,6 +793,7 @@
       await db.goals.update(goal.id, { spends });
       await adjustBankBalance(bankId, -spendInRM);
       showToast(`Spent ${ccy} ${fmt(amt)} · ${goal.label}`);
+      recordStreakActivity();
       onClose();
       currentView.set('goals');
       return;
@@ -749,6 +804,7 @@
       await db.months.update(month.key, { reimbursements });
       if (bankId) await adjustBankBalance(bankId, amt);
       showToast(`Paid back to you · RM ${fmt(amt)}`);
+      recordStreakActivity();
       onClose();
       currentView.set('home');
       return;
@@ -775,6 +831,7 @@
 
     const cat = tmpl.categories.find((c) => c.key === catKey);
     showToast(`Saved RM ${fmt(amt)} · ${cat?.name ?? ''}`);
+    recordStreakActivity();
     onClose();
     currentView.set('home');
   }
@@ -1029,7 +1086,37 @@
     {/if}
 
     <div class="field-lbl">Note (optional)</div>
-    <input class="note-input" placeholder={addMode === 'income' ? 'e.g. Freelance gig, gift, refund' : 'e.g. Deposit, top-up, refund…'} bind:value={noteValue} />
+    <div class="note-wrap">
+    <input
+      class="note-input"
+      class:suggesting={noteSuggestions.length > 0}
+      placeholder={addMode === 'income' ? 'e.g. Freelance gig, gift, refund' : 'e.g. Deposit, top-up, refund…'}
+      autocomplete="off"
+      bind:this={noteInputEl}
+      bind:value={noteValue}
+      onfocus={onNoteFocus}
+      onblur={() => (noteFocused = false)}
+      onkeydown={(e) => { if (e.key === 'Escape') noteFocused = false; }}
+    />
+    <!-- Overlay, like the category dropdown -- floats over Save instead of
+         pushing it down. An absolute child still counts toward .add-scroll's
+         scrollable area, so it isn't clipped when it reaches past the end.
+         Capped at 5 rows with no inner scroller (nested scrollers are the
+         pattern behind FAB_KEYBOARD_SCROLL_BUG.md). mousedown is prevented
+         so tapping a row doesn't blur the field and close the list before
+         the click lands. -->
+    {#if noteSuggestions.length}
+      <div class="note-suggest">
+        {#each noteSuggestions as s (s)}
+          {@const [typed, rest] = splitTyped(s)}
+          <button class="note-suggest-item" onmousedown={(e) => e.preventDefault()} onclick={() => pickNote(s)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2"/></svg>
+            <span class="txt">{typed}<b>{rest}</b></span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+    </div>
 
     <!-- Plain content inside .add-scroll now, not a separate fixed/sticky
          footer -- no special positioning at all, so there's nothing for
@@ -1180,6 +1267,34 @@
   }
   .chip-scroll::-webkit-scrollbar { display: none; }
   .chip-scroll .chip { flex-shrink: 0; }
+
+  /* Google-style suggestion list, visually attached under the note field. */
+  .note-input.suggesting { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .note-input { scroll-margin-top: 28px; }
+  .note-wrap { position: relative; }
+  .note-suggest {
+    position: absolute;
+    z-index: 6;
+    top: 100%;
+    left: 0; right: 0;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    display: flex; flex-direction: column;
+    background: var(--panel);
+    border: 2px solid var(--stroke-2); border-top: 1px solid var(--stroke);
+    border-radius: 0 0 14px 14px;
+    padding: 4px 0;
+  }
+  .note-suggest-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px;
+    background: none; border: none;
+    font-family: var(--body); font-size: 14px; color: var(--hi);
+    text-align: left;
+  }
+  .note-suggest-item:active { background: var(--panel-2); }
+  .note-suggest-item svg { flex-shrink: 0; color: var(--dim); }
+  .note-suggest-item .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .note-suggest-item .txt b { font-weight: 700; }
 
   /* Category dropdown -- position:relative wrapper + position:absolute list
      means the open list overlays whatever's below (Buffer label, goal

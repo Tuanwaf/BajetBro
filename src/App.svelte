@@ -7,6 +7,9 @@
   // Guided tour disabled for now -- revisit later if still wanted.
   // import GuideOverlay from './lib/components/GuideOverlay.svelte';
   import InstallBanner from './lib/components/InstallBanner.svelte';
+  import StreakCelebration from './lib/components/StreakCelebration.svelte';
+  import UpdateBanner from './lib/components/UpdateBanner.svelte';
+  import { devDays } from './lib/streak.js';
   import Home from './routes/Home.svelte';
   import Goals from './routes/Goals.svelte';
   import History from './routes/History.svelte';
@@ -155,8 +158,26 @@
 
     <!-- <GuideOverlay /> -->
     <InstallBanner hidden={$addOpen || endMonthSheetOpen} />
+    <StreakCelebration />
+    {#if $devDays}
+      <!-- Dev mode preview is on (see DevStreakPanel) -- always visible so
+           test data is never mistaken for the real streak. -->
+      <button class="dev-preview-pill" onclick={() => devDays.set(null)}>DEV PREVIEW · Exit ✕</button>
+    {/if}
   {/if}
 
   <div class="status-bar-blur"></div>
+  <!-- Outside the month check so it also shows during onboarding. -->
+  <UpdateBanner />
   <Toast />
 </div>
+
+<style>
+  .dev-preview-pill {
+    position: fixed; z-index: 150;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 104px); left: 50%; transform: translateX(-50%);
+    padding: 5px 12px; border-radius: 99px;
+    background: #3a8dde; color: #fff; border: 2px solid var(--stroke-2);
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+  }
+</style>
