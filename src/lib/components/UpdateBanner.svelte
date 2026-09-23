@@ -23,7 +23,11 @@
 </script>
 
 {#if show}
-  <div class="update-banner" role="dialog" aria-label="Update available">
+  <!-- Centred dialog over a dimmed backdrop. Tapping the backdrop does
+       nothing on purpose -- Later / Update now are the only ways out, so it
+       can't be dismissed by a stray tap. -->
+  <div class="update-overlay">
+  <div class="update-banner" role="dialog" aria-modal="true" aria-label="Update available">
     <div class="hd">
       <span class="badge" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -53,24 +57,36 @@
     </div>
     <p class="fine">The app restarts on the new version. Your data stays on this device.</p>
   </div>
+  </div>
 {/if}
 
 <style>
-  .update-banner {
-    position: fixed;
+  .update-overlay {
+    position: fixed; inset: 0;
     z-index: 190;
-    left: 12px; right: 12px;
-    top: calc(env(safe-area-inset-top, 0px) + 10px);
-    max-width: 460px;
-    margin: 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+    background: rgba(17, 19, 24, 0.55);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    animation: fade-in 0.25s ease;
+  }
+  @keyframes fade-in { from { opacity: 0; } }
+  .update-banner {
+    width: 100%;
+    max-width: 400px;
+    /* A long "What's new" list scrolls inside the card instead of running
+       off a short screen. */
+    max-height: 100%;
+    overflow-y: auto;
     background: var(--panel);
     border: 2px solid var(--stroke-2);
     border-radius: 20px;
     box-shadow: 4px 4px 0 var(--stroke-2);
-    padding: 14px 16px 12px;
-    animation: drop-in 0.45s cubic-bezier(0.25, 1.3, 0.5, 1);
+    padding: 16px 16px 12px;
+    animation: pop-in 0.4s cubic-bezier(0.25, 1.4, 0.5, 1);
   }
-  @keyframes drop-in { from { transform: translateY(-120%); } }
+  @keyframes pop-in { from { opacity: 0; transform: scale(0.88); } }
   .hd { display: flex; align-items: center; gap: 10px; }
   .badge {
     width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
@@ -87,5 +103,5 @@
   .actions > * { flex: 1; margin-top: 0; }
   .actions button:disabled { opacity: 0.6; }
   .fine { font-size: 11px; color: var(--dim); margin: 8px 0 0; text-align: center; }
-  @media (prefers-reduced-motion: reduce) { .update-banner { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .update-overlay, .update-banner { animation: none; } }
 </style>
