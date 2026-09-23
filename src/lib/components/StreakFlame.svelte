@@ -3,19 +3,33 @@
   // streak.js -- the same palette as the celebration's 3D fire). Flickers
   // with plain CSS transforms, so it costs nothing to leave running;
   // `animate={false}` for places that show many at once (the calendar).
+  // `unlit`: today isn't logged yet -- a hollow outline in the tier colour
+  // that pulses gently, and pops alight the moment it turns lit.
   import { TIERS, GREY_FIRE } from '../streak.js';
 
-  let { size = 16, tier = 0, grey = false, animate = true } = $props();
+  let { size = 16, tier = 0, grey = false, animate = true, unlit = false } = $props();
+
+  let ignite = $state(false);
+  let wasUnlit = unlit;
+  $effect(() => {
+    if (wasUnlit && !unlit) {
+      ignite = true;
+      const t = setTimeout(() => (ignite = false), 650);
+      wasUnlit = unlit;
+      return () => clearTimeout(t);
+    }
+    wasUnlit = unlit;
+  });
 
   // Gradient ids must be unique per instance -- several flames share a page.
   const uid = `fl${Math.random().toString(36).slice(2, 9)}`;
   let t = $derived(TIERS[tier] ?? TIERS[0]);
   let fire = $derived(grey ? GREY_FIRE : t.fire);
-  let rainbow = $derived(!grey && !!t.rainbow);
-  let glow = $derived(!grey && !!t.glow);
+  let rainbow = $derived(!grey && !unlit && !!t.rainbow);
+  let glow = $derived(!grey && !unlit && !!t.glow);
 </script>
 
-<svg class="flame" class:animate class:rainbow class:glow style="--glow:{t.color}" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+<svg class="flame" class:animate class:rainbow class:glow class:unlit class:ignite style="--glow:{t.color}" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
   <defs>
     <linearGradient id="{uid}o" x1="0" y1="1" x2="0" y2="0">
       <stop offset="0" stop-color={fire[1]} />
@@ -55,7 +69,20 @@
     100% { transform: scale(1.05, 0.94) translateY(1%); }
   }
   @keyframes hue { to { filter: hue-rotate(360deg); } }
+
+  /* Not logged yet today: hollow, dashed, breathing slowly. */
+  .flame.unlit .outer { fill: none; stroke: var(--glow); stroke-width: 1.8; stroke-dasharray: 2.6 2; }
+  .flame.unlit .inner { display: none; }
+  .flame.unlit.animate .outer { animation: none; }
+  .flame.unlit.animate { animation: unlit-pulse 2.4s ease-in-out infinite; }
+  @keyframes unlit-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+  .flame.ignite.animate { animation: ignite 0.65s cubic-bezier(0.3, 1.6, 0.5, 1); }
+  @keyframes ignite {
+    0% { transform: scale(0.6); opacity: 0.5; }
+    60% { transform: scale(1.3); opacity: 1; }
+    100% { transform: scale(1); }
+  }
   @media (prefers-reduced-motion: reduce) {
-    .flame .outer, .flame .inner, .flame.rainbow, .flame.glow { animation: none !important; }
+    .flame .outer, .flame .inner, .flame.rainbow, .flame.glow, .flame.unlit, .flame.ignite { animation: none !important; }
   }
 </style>

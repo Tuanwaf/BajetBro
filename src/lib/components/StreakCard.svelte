@@ -14,6 +14,9 @@
   let view = $derived(hold ?? $streak);
   let grey = $derived(view.status === 'grey');
   let active = $derived(view.status === 'active');
+  // Active but nothing saved yet today: the buddy dozes and the flame waits
+  // unlit until the first save wakes them both.
+  let sleepy = $derived(active && !view.todayLogged);
   let tier = $derived(TIERS[tierIndex(view.count)]);
   let nextTier = $derived(TIERS[tierIndex(view.count) + 1] ?? null);
 
@@ -113,7 +116,7 @@
       const left = REVIVE_DAYS - view.revive;
       return left === REVIVE_DAYS ? `On hold · log ${REVIVE_DAYS} days to relight` : `${left} more day${left === 1 ? '' : 's'} to relight!`;
     }
-    if (!view.todayLogged) return 'Log today to keep it alive';
+    if (!view.todayLogged) return 'Not logged yet today';
     if (nextTier && nextTier.min - view.count <= 5) {
       const left = nextTier.min - view.count;
       return `${left} day${left === 1 ? '' : 's'} to your next buddy!`;
@@ -122,18 +125,21 @@
   });
 </script>
 
-<div class="card streak-card" class:grey style="background:{active ? tier.pastel : GREY_PASTEL}" role="button" tabindex="0" onclick={onOpen} onkeydown={(e) => e.key === 'Enter' && onOpen?.()}>
+<div class="card streak-card" class:grey class:sleepy style="background:{active ? tier.pastel : GREY_PASTEL}" role="button" tabindex="0" onclick={onOpen} onkeydown={(e) => e.key === 'Enter' && onOpen?.()}>
   <div class="buddy-wrap" class:hidden={$celebrating}>
     {#key reactKey}
       <div class="buddy-react {reaction}">
         <img class="buddy" bind:this={buddyEl} src={tier.img} alt="Streak buddy" draggable="false" />
       </div>
     {/key}
+    {#if sleepy}
+      <span class="zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
+    {/if}
   </div>
 
   <div class="mid">
     <div class="line">
-      <StreakFlame size={24} tier={tierIndex(view.count)} grey={!active} />
+      <StreakFlame size={24} tier={tierIndex(view.count)} grey={!active} unlit={sleepy} />
       <span class="n num">
         {#if rollFrom != null}
           <span class="roll-out">{rollFrom}</span>
@@ -169,7 +175,7 @@
     min-height: 104px;
     cursor: pointer;
   }
-  .buddy-wrap { width: 78px; flex-shrink: 0; display: flex; justify-content: center; animation: bob 3.2s ease-in-out infinite; }
+  .buddy-wrap { position: relative; width: 78px; flex-shrink: 0; display: flex; justify-content: center; animation: bob 3.2s ease-in-out infinite; }
   .buddy-wrap.hidden { visibility: hidden; }
   .buddy-react { width: 100%; display: flex; justify-content: center; transform-origin: 50% 100%; }
   .buddy { width: 100%; max-height: 84px; object-fit: contain; transform-origin: 50% 100%; animation: breathe 3.2s ease-in-out infinite; user-select: none; -webkit-user-drag: none; }
@@ -230,7 +236,27 @@
   .grey .buddy-wrap { animation-duration: 5s; }
   .grey .n, .grey .unit { color: var(--dim); }
 
+  /* Sleepy: not logged yet today -- buddy dimmed, dozing slowly, Zs drifting up. */
+  .sleepy .buddy { filter: saturate(0.55) brightness(0.96); opacity: 0.85; animation-duration: 5.5s; }
+  .sleepy .buddy-wrap { animation-duration: 5.5s; }
+  .zzz { position: absolute; top: -2px; right: -4px; pointer-events: none; }
+  .zzz i {
+    position: absolute; right: 0; top: 0;
+    font-family: var(--display); font-style: normal; font-weight: 800;
+    color: var(--lo); opacity: 0;
+    animation: zzz 3.6s ease-out infinite;
+  }
+  .zzz i:nth-child(1) { font-size: 11px; }
+  .zzz i:nth-child(2) { font-size: 14px; animation-delay: 1.2s; }
+  .zzz i:nth-child(3) { font-size: 17px; animation-delay: 2.4s; }
+  @keyframes zzz {
+    0% { transform: translate(0, 10px); opacity: 0; }
+    20% { opacity: 0.85; }
+    100% { transform: translate(10px, -16px) rotate(12deg); opacity: 0; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .buddy-wrap, .buddy, .buddy-react { animation: none !important; }
+    .buddy-wrap, .buddy, .buddy-react, .zzz i { animation: none !important; }
+    .zzz i:nth-child(3) { opacity: 0.7; }
   }
 </style>

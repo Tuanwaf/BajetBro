@@ -50,7 +50,7 @@
       const left = REVIVE_DAYS - s.revive;
       return `On hold at ${s.count} days. Log ${left} more day${left === 1 ? '' : 's'} in a row to relight it — once you start, missing a day starts it over from 1.`;
     }
-    if (!s.todayLogged) return 'Log something today to keep it alive.';
+    if (!s.todayLogged) return 'Not logged yet today — save any entry to keep it alive.';
     if (next) {
       const left = next.min - s.count;
       return `${left} more day${left === 1 ? '' : 's'} until your buddy evolves.`;
@@ -72,7 +72,7 @@
     <div class="card hero" class:grey style="--tier:{tier.color}; background:{grey || s.status === 'none' ? GREY_PASTEL : tier.pastel}">
       <div class="hero-buddy"><img src={tier.img} alt="{tier.name} buddy" draggable="false" /></div>
       <div class="hero-count">
-        <StreakFlame size={26} tier={tIdx} grey={s.status !== 'active'} />
+        <StreakFlame size={26} tier={tIdx} grey={s.status !== 'active'} unlit={s.status === 'active' && !s.todayLogged} />
         <span class="n num">{s.count}</span>
         <span class="unit">{s.count === 1 ? 'day' : 'days'}</span>
       </div>
