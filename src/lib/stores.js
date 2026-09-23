@@ -59,3 +59,6 @@ export const tabungHajiEnabled = fromLiveQuery(async () => !!(await db.meta.get(
 export const devModeEnabled = fromLiveQuery(async () => !!(await db.meta.get('devMode'))?.value, false);
 
 export const userName = fromLiveQuery(async () => (await db.meta.get('userName'))?.value || '', '');
+
+// How the Home greeting addresses the user: 'bro' | 'sis' | '' (name only).
+export const honorific = fromLiveQuery(async () => (await db.meta.get('honorific'))?.value || '', '');

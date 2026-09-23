@@ -17,15 +17,15 @@
   let previewing = $derived($devDays != null);
 
   // ---- celebrations ----
-  // One representative count per tier for each kind.
-  const MILESTONE_AT = [3, 14, 50, 100, 200];
-  const RELIGHT_AT = [5, 20, 40, 90, 160];
+  // A day count inside each tier, a few days past its start (so a relight
+  // of -3 stays in the same tier).
+  const inTier = (t) => t.min + Math.min(5, Math.max(3, (t.max === Infinity ? 50 : t.max - t.min) >> 1));
   const allCelebrations = [
     { label: 'Start (day 1)', kind: 'start', count: 1, from: 0 },
-    ...TIERS.map((t, i) => ({ label: `Milestone ${MILESTONE_AT[i]}`, kind: 'milestone', count: MILESTONE_AT[i], tier: i })),
-    ...TIERS.slice(1).map((t, i) => ({ label: `Evolve → ${t.name} (${t.min})`, kind: 'tierup', count: t.min, tier: i + 1 })),
-    ...TIERS.map((t, i) => ({ label: `Relight ${RELIGHT_AT[i] - 3}→${RELIGHT_AT[i]}`, kind: 'revive', count: RELIGHT_AT[i], from: RELIGHT_AT[i] - 3, tier: i })),
-    ...TIERS.map((t, i) => ({ label: `Freeze used · ${t.name}`, kind: 'freeze', count: [5, 20, 40, 90, 160][i], tier: i })),
+    ...TIERS.map((t) => ({ label: `Milestone · ${t.name}`, kind: 'milestone', count: inTier(t) })),
+    ...TIERS.slice(1).map((t) => ({ label: `Evolve → ${t.name} (${t.min})`, kind: 'tierup', count: t.min })),
+    ...TIERS.map((t) => ({ label: `Relight · ${t.name}`, kind: 'revive', count: inTier(t), from: inTier(t) - 3 })),
+    ...TIERS.map((t) => ({ label: `Freeze used · ${t.name}`, kind: 'freeze', count: inTier(t) })),
   ];
 
   // The Home card shows the state from before the celebration and rolls up
@@ -73,7 +73,7 @@
   const grey37 = '1'.repeat(35) + '00' + '11' + '0';
   const states = [
     { label: 'Fresh (never logged)', pattern: '' },
-    ...TIERS.map((t, i) => ({ label: `${t.name} · day ${[4, 12, 45, 100, 200][i]}`, pattern: '1'.repeat([4, 12, 45, 100, 200][i]) })),
+    ...TIERS.map((t) => ({ label: `${t.name} · day ${inTier(t)}`, pattern: '1'.repeat(inTier(t)) })),
     { label: 'Not logged today yet', pattern: '1'.repeat(20) + '0' },
     { label: '1 freeze left', pattern: '1'.repeat(14) + '0' + '1'.repeat(3) },
     { label: 'Freeze just used', pattern: '1'.repeat(9) + '0' + '0' },

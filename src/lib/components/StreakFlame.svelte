@@ -12,9 +12,10 @@
   let t = $derived(TIERS[tier] ?? TIERS[0]);
   let fire = $derived(grey ? GREY_FIRE : t.fire);
   let rainbow = $derived(!grey && !!t.rainbow);
+  let glow = $derived(!grey && !!t.glow);
 </script>
 
-<svg class="flame" class:animate class:rainbow width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+<svg class="flame" class:animate class:rainbow class:glow style="--glow:{t.color}" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
   <defs>
     <linearGradient id="{uid}o" x1="0" y1="1" x2="0" y2="0">
       <stop offset="0" stop-color={fire[1]} />
@@ -35,6 +36,13 @@
   .flame.animate .outer { animation: flick-outer 1.3s ease-in-out infinite alternate; }
   .flame.animate .inner { animation: flick-inner 0.9s ease-in-out infinite alternate; }
   .flame.rainbow { animation: hue 5s linear infinite; }
+  /* Top tiers: a soft aura in the tier colour that breathes with the flicker. */
+  .flame.glow { filter: drop-shadow(0 0 2px var(--glow)) drop-shadow(0 0 5px var(--glow)); }
+  .flame.glow.animate { animation: aura 1.6s ease-in-out infinite alternate; }
+  @keyframes aura {
+    from { filter: drop-shadow(0 0 1.5px var(--glow)) drop-shadow(0 0 3px var(--glow)); }
+    to { filter: drop-shadow(0 0 2.5px var(--glow)) drop-shadow(0 0 7px var(--glow)); }
+  }
   @keyframes flick-outer {
     0% { transform: scale(1, 1) skewX(0deg); }
     35% { transform: scale(0.97, 1.05) skewX(-3deg); }
@@ -48,6 +56,6 @@
   }
   @keyframes hue { to { filter: hue-rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
-    .flame .outer, .flame .inner, .flame.rainbow { animation: none !important; }
+    .flame .outer, .flame .inner, .flame.rainbow, .flame.glow { animation: none !important; }
   }
 </style>

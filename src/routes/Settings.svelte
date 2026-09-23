@@ -1,5 +1,5 @@
 <script>
-  import { template, currentMonth, userName, devModeEnabled } from '../lib/stores.js';
+  import { template, currentMonth, userName, honorific, devModeEnabled } from '../lib/stores.js';
   import { computeBufferPlannedLive, computeBankFreeTotal, round2 } from '../lib/calc.js';
   import { fmt } from '../lib/format.js';
   import { showToast } from '../lib/toast.js';
@@ -119,6 +119,15 @@
   async function updateName(e) {
     const value = e.target.value.trim();
     await db.meta.put({ key: 'userName', value });
+  }
+
+  const HONORIFICS = [
+    { value: 'bro', label: 'Bro' },
+    { value: 'sis', label: 'Sis' },
+    { value: '', label: 'Name only' },
+  ];
+  async function setHonorific(value) {
+    await db.meta.put({ key: 'honorific', value });
   }
 
   async function updateIncome(e) {
@@ -262,9 +271,20 @@
 <p class="sub">Fixed categories reappear every month automatically. Buffer gets one pooled budget.</p>
 
 <div class="section-hd" style="margin-top:6px;"><h3>Profile</h3></div>
-<div class="card" style="display:flex; align-items:center; justify-content:space-between;">
-  <span style="font-size:13.5px; color:var(--lo);">Your name</span>
-  <input class="cat-name-input" style="text-align:right; flex:0 1 auto; width:140px;" value={$userName} placeholder="e.g. Wafiq" onchange={updateName} />
+<div class="card profile-card">
+  <div class="profile-row">
+    <span class="profile-lbl">Your name</span>
+    <input class="cat-name-input" style="text-align:right; flex:0 1 auto; width:140px;" value={$userName} placeholder="e.g. Wafiq" onchange={updateName} />
+  </div>
+  <div class="profile-row">
+    <span class="profile-lbl">Call me</span>
+    <div class="hon-toggle" role="radiogroup" aria-label="How the greeting addresses you">
+      {#each HONORIFICS as h}
+        <button class="hon-btn" class:selected={$honorific === h.value} role="radio" aria-checked={$honorific === h.value} onclick={() => setHonorific(h.value)}>{h.label}</button>
+      {/each}
+    </div>
+  </div>
+  <p class="hint" style="margin:8px 0 0;">Home says “Hi {[$honorific === 'bro' ? 'Bro' : $honorific === 'sis' ? 'Sis' : '', $userName].filter(Boolean).join(' ') || 'there'} 👋”</p>
 </div>
 
 <div class="section-hd"><h3>Banks</h3></div>
@@ -442,6 +462,12 @@ Guided tour disabled for now -- revisit later if still wanted.
 <ManageBanksSheet open={manageBanksOpen} onClose={() => (manageBanksOpen = false)} />
 
 <style>
+  .profile-card { display: flex; flex-direction: column; gap: 10px; }
+  .profile-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .profile-lbl { font-size: 13.5px; color: var(--lo); }
+  .hon-toggle { display: flex; gap: 3px; padding: 3px; border: 2px solid var(--stroke-2); border-radius: 12px; background: var(--panel-2); }
+  .hon-btn { border: none; background: none; border-radius: 9px; padding: 6px 11px; font-size: 12.5px; font-weight: 700; color: var(--dim); }
+  .hon-btn.selected { background: var(--gold); color: var(--accent-ink); }
   /* This row specifically (not every .set-row in the app -- Svelte scopes
      this to Settings.svelte) uses a tighter gap than the global 12px. */
   .set-row {

@@ -1,5 +1,5 @@
 <script>
-  import { currentMonth, userName, goals as goalsStore } from '../lib/stores.js';
+  import { currentMonth, userName, honorific, goals as goalsStore } from '../lib/stores.js';
   import {
     computeBufferActual,
     computeBankFreeTotal,
@@ -127,10 +127,11 @@
   // Home's own real content needs to be display:none rather than just
   // visually covered -- these now share the root document scroll instead
   // of being position:fixed overlays with their own scroller.
-  function greeting() {
-    const h = new Date().getHours();
-    return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-  }
+  // "Hi Bro Wafiq" / "Hi Sis Siti" / "Hi Wafiq" -- Bro/Sis is set in
+  // Settings -> Profile. "Hi there" if there's no name at all.
+  let greeting = $derived(
+    'Hi ' + ([$honorific === 'bro' ? 'Bro' : $honorific === 'sis' ? 'Sis' : '', $userName].filter(Boolean).join(' ') || 'there')
+  );
 
   let anySheetOpen = $derived(detailCategoryKey != null || bufferLabel != null || reimburseOpen || bankTxnSheetOpen || $streakSheetOpen);
   $effect(() => {
@@ -159,7 +160,7 @@
 
 <div style:display={anySheetOpen ? 'none' : 'contents'}>
 <div class="greet-row">
-  <h2 class="title">{greeting()}{$userName ? `, ${$userName}` : ''} 👋</h2>
+  <h2 class="title">{greeting} 👋</h2>
   <span class="pill gold cycle-pill">{month.label} {year}</span>
 </div>
 
@@ -305,9 +306,8 @@
     gap: 10px;
     margin: 14px 0 14px;
   }
-  /* Mixed case and a little smaller than the app-wide uppercase title --
-     "Good afternoon, <name>" is much longer than the old "Hey, <name>" and
-     ran to three lines in caps. */
+  /* Mixed case and a little smaller than the app-wide uppercase title, per
+     the Home mockup ("Hi Bro Wafiq" rather than "HI BRO WAFIQ"). */
   .streak-slot { margin-top: 14px; }
   .greet-row h2.title { margin: 0; font-size: 24px; line-height: 1.15; text-transform: none; }
   .cycle-pill {
