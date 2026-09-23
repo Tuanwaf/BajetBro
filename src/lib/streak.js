@@ -64,6 +64,14 @@ export function tierIndex(count) {
   return TIERS.findIndex((t) => count >= t.min && count <= t.max);
 }
 
+// The buddy on show: the one picked on the Streak page (`choice`, a TIERS
+// index) if it's been unlocked -- best streak ever reached its tier -- else
+// the current streak's own tier. Brings that buddy's card and flame colours.
+export function shownTierIndex(count, best, choice) {
+  const t = choice == null ? null : TIERS[choice];
+  return t && best >= t.min ? choice : tierIndex(count);
+}
+
 // Days that aren't a tier change but still get the full celebration.
 const MILESTONES = new Set([3, 14, 50, 100, 200, 250, 300, 365, 400, 500, 730, 1000]);
 export function isMilestone(count) {
@@ -157,6 +165,20 @@ export const streakDays = readable(undefined, (set) => {
   return () => sub.unsubscribe();
 });
 
+// The picked buddy (meta 'streakBuddy', a TIERS index), or null to follow
+// the current streak. Cleared whenever a new buddy is unlocked, so the
+// evolve celebration lands on the new one.
+export const buddyChoice = readable(null, (set) => {
+  const sub = liveQuery(async () => (await db.meta.get('streakBuddy'))?.value ?? null).subscribe({
+    next: set,
+    error: (e) => console.error('[BajetBro] buddy query failed:', e),
+  });
+  return () => sub.unsubscribe();
+});
+export function setBuddyChoice(i) {
+  return i == null ? db.meta.delete('streakBuddy') : db.meta.put({ key: 'streakBuddy', value: i });
+}
+
 // Re-evaluated when the date rolls over (checked each minute, and whenever
 // the app comes back to the foreground -- a PWA can sit suspended overnight).
 export const today = readable(localDay(), (set) => {
@@ -229,6 +251,7 @@ export async function recordStreakActivity() {
     if (preview) devDays.set(nextDays);
     else await db.meta.put({ key: 'streakDays', value: nextDays });
     const c = classify(before, computeStreak(nextDays, t));
+    if (c?.kind === 'tierup' && !preview) await setBuddyChoice(null);
     if (c) setTimeout(() => celebration.set(c), 550);
   } catch (e) {
     console.error('[BajetBro] streak record failed:', e);

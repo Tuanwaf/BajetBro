@@ -1,7 +1,7 @@
 <script>
   import { onDestroy, onMount, tick } from 'svelte';
   import { get } from 'svelte/store';
-  import { celebration, celebrating, cardBuddyEl, landed, lastSetupMs, TIERS, tierIndex } from '../streak.js';
+  import { celebration, celebrating, cardBuddyEl, landed, lastSetupMs, TIERS, tierIndex, shownTierIndex, buddyChoice } from '../streak.js';
 
   const BIG = new Set(['start', 'milestone', 'tierup', 'revive', 'freeze']);
   const FREEZE_BLUE = '#3a8dde';
@@ -22,8 +22,10 @@
   let run = null;
   let fallbackResolve = null;
 
-  let fromTier = $derived(active ? TIERS[tierIndex(active.kind === 'tierup' ? active.before.count : active.after.count)] : null);
-  let toTier = $derived(active ? TIERS[tierIndex(active.after.count)] : null);
+  // A tier-up always shows the newly unlocked buddy; anything else keeps
+  // the one the user picked, matching the Home card it flies back into.
+  let toTier = $derived(active ? TIERS[active.kind === 'tierup' ? tierIndex(active.after.count) : shownTierIndex(active.after.count, active.after.best, $buddyChoice)] : null);
+  let fromTier = $derived(active ? (active.kind === 'tierup' ? TIERS[tierIndex(active.before.count)] : toTier) : null);
   let textTop = $derived(typeof window === 'undefined' ? 0 : window.innerHeight * BUDDY_CENTER_Y + buddyPx(window.innerWidth, window.innerHeight) / 2 + 22);
   let fallbackSize = $derived(typeof window === 'undefined' ? 0 : buddyPx(window.innerWidth, window.innerHeight));
 

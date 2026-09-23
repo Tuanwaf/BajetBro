@@ -1,7 +1,7 @@
 <script>
   import { sheetPageCount } from '../lib/viewStore.js';
   import { swipeBack } from '../lib/swipeBack.js';
-  import { streak, effectiveDays, today, localDay, TIERS, GREY_PASTEL, tierIndex, REVIVE_DAYS, MAX_FREEZES, FREEZE_EVERY } from '../lib/streak.js';
+  import { streak, effectiveDays, today, localDay, TIERS, GREY_PASTEL, tierIndex, shownTierIndex, buddyChoice, setBuddyChoice, REVIVE_DAYS, MAX_FREEZES, FREEZE_EVERY } from '../lib/streak.js';
   import StreakFlame from '../lib/components/StreakFlame.svelte';
 
   let { open, onClose } = $props();
@@ -17,7 +17,15 @@
   let s = $derived($streak);
   let grey = $derived(s.status === 'grey');
   let tIdx = $derived(tierIndex(s.count));
-  let tier = $derived(TIERS[tIdx]);
+  // The buddy on show -- tIdx stays the streak's own tier (progress, "Now").
+  let shownIdx = $derived(shownTierIndex(s.count, s.best, $buddyChoice));
+  let tier = $derived(TIERS[shownIdx]);
+  let picked = $derived(shownIdx !== tIdx);
+
+  // Tapping the buddy already on show goes back to following the streak.
+  function pick(i) {
+    setBuddyChoice(i === shownIdx || i === tIdx ? null : i);
+  }
   let next = $derived(TIERS[tIdx + 1] ?? null);
 
   let statusLabel = $derived(s.status === 'active' ? 'Active' : grey ? 'On hold' : s.best > 0 ? 'Ended' : 'Not started');
@@ -72,7 +80,7 @@
     <div class="card hero" class:grey style="--tier:{tier.color}; background:{grey || s.status === 'none' ? GREY_PASTEL : tier.pastel}">
       <div class="hero-buddy"><img src={tier.img} alt="{tier.name} buddy" draggable="false" /></div>
       <div class="hero-count">
-        <StreakFlame size={26} tier={tIdx} grey={s.status !== 'active'} unlit={s.status === 'active' && !s.todayLogged} />
+        <StreakFlame size={26} tier={shownIdx} grey={s.status !== 'active'} unlit={s.status === 'active' && !s.todayLogged} />
         <span class="n num">{s.count}</span>
         <span class="unit">{s.count === 1 ? 'day' : 'days'}</span>
       </div>
@@ -108,7 +116,7 @@
               <span class="dl">{d.letter}</span>
               <span class="dot {d.state}">
                 {#if d.state === 'logged'}
-                  <StreakFlame size={16} tier={tIdx} grey={grey} animate={false} />
+                  <StreakFlame size={16} tier={shownIdx} grey={grey} animate={false} />
                 {:else if d.state === 'frozen'}
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
                 {:else}
@@ -120,28 +128,31 @@
         </div>
       {/each}
       <div class="cal-legend">
-        <span><StreakFlame size={12} tier={tIdx} animate={false} /> Logged</span>
+        <span><StreakFlame size={12} tier={shownIdx} animate={false} /> Logged</span>
         <span><i class="lg frozen"></i> Freeze used</span>
         <span><i class="lg missed"></i> Missed</span>
       </div>
     </div>
 
     <div class="field-lbl">Buddies</div>
+    <p class="ladder-hint">{picked ? `Showing ${tier.name} · tap it again to follow your streak` : 'Tap an unlocked buddy to show it on Home'}</p>
     <div class="card ladder">
       {#each TIERS as t, i}
         {@const unlocked = s.best >= t.min}
-        <div class="rung" class:current={i === tIdx && s.count > 0} class:locked={!unlocked}>
+        <button type="button" class="rung" class:current={!picked && i === tIdx && s.count > 0} class:shown={picked && i === shownIdx} class:locked={!unlocked} disabled={!unlocked} style="--tier:{t.color}" onclick={() => pick(i)}>
           <img src={t.img} alt="" draggable="false" />
           <div class="rung-body">
             <div class="rung-name">{unlocked ? t.name : '???'}</div>
             <div class="rung-range">{t.max === Infinity ? `${t.min}+ days` : `${t.min}–${t.max} days`}</div>
           </div>
-          {#if i === tIdx && s.count > 0}
+          {#if picked && i === shownIdx}
+            <span class="pill shown-pill">Showing</span>
+          {:else if i === tIdx && s.count > 0}
             <span class="pill gold">Now</span>
           {:else if !unlocked}
             <span class="rung-left">{t.min - s.count} to go</span>
           {/if}
-        </div>
+        </button>
       {/each}
     </div>
 
@@ -199,7 +210,17 @@
   .lg.frozen { background: rgba(58, 141, 222, 0.2); border-color: #3a8dde; }
 
   .ladder { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; }
-  .rung { display: flex; align-items: center; gap: 12px; padding: 8px 6px; border-radius: 12px; }
+  .ladder-hint { font-size: 12px; color: var(--dim); margin: -4px 2px 8px; }
+  .rung {
+    display: flex; align-items: center; gap: 12px; padding: 8px 6px; border-radius: 12px;
+    width: 100%; text-align: left; font: inherit; color: inherit;
+    background: none; border: 2px solid transparent; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .rung:disabled { cursor: default; }
+  .rung:not(:disabled):active { transform: scale(0.98); }
+  .rung.shown { border-color: var(--tier); }
+  .shown-pill { background: var(--tier); color: #fff; }
   .rung.current { background: var(--panel-2); }
   .rung img { width: 46px; height: 46px; object-fit: contain; flex-shrink: 0; }
   .rung.locked img { filter: brightness(0); opacity: 0.18; }

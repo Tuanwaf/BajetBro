@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte';
   import db from '../db.js';
   import { showToast } from '../toast.js';
-  import { streak, streakReady, devDays, devSeenReset, celebration, celebrating, cardBuddyEl, landed, TIERS, GREY_PASTEL, tierIndex, REVIVE_DAYS } from '../streak.js';
+  import { streak, streakReady, devDays, devSeenReset, celebration, celebrating, cardBuddyEl, landed, TIERS, GREY_PASTEL, tierIndex, shownTierIndex, buddyChoice, REVIVE_DAYS } from '../streak.js';
   import StreakFlame from './StreakFlame.svelte';
 
   let { onOpen } = $props();
@@ -17,7 +17,8 @@
   // Active but nothing saved yet today: the buddy dozes and the flame waits
   // unlit until the first save wakes them both.
   let sleepy = $derived(active && !view.todayLogged);
-  let tier = $derived(TIERS[tierIndex(view.count)]);
+  let shownIdx = $derived(shownTierIndex(view.count, view.best, $buddyChoice));
+  let tier = $derived(TIERS[shownIdx]);
   let nextTier = $derived(TIERS[tierIndex(view.count) + 1] ?? null);
 
   let buddyEl = $state(null);
@@ -139,7 +140,7 @@
 
   <div class="mid">
     <div class="line">
-      <StreakFlame size={24} tier={tierIndex(view.count)} grey={!active} unlit={sleepy} />
+      <StreakFlame size={24} tier={shownIdx} grey={!active} unlit={sleepy} />
       <span class="n num">
         {#if rollFrom != null}
           <span class="roll-out">{rollFrom}</span>
