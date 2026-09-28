@@ -69,9 +69,10 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: false,
       // Default only precaches js/css/html -- the streak buddies (webp) and
-      // icons need to be there offline too.
+      // icons need to be there offline too, and so does the bundled heading
+      // font (woff2) -- without it offline Android falls back to thin text.
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,webp,svg,ico}'],
+        globPatterns: ['**/*.{js,css,html,png,webp,svg,ico,woff2}'],
         // Take control of the page on the very FIRST install, so a new user
         // is offline-ready straight away. Updates are unaffected: in
         // 'prompt' mode a new worker still waits until the user taps Update.

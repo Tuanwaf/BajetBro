@@ -1,3 +1,28 @@
+/* Bundled fonts for non-Apple devices (Apple keeps Avenir Next / SF Mono).
+   Both are variable fonts, Latin subset only -- covers English and Malay.
+   Precached by the service worker (see vite.config.js globPatterns), so they
+   work offline like the rest of the app. */
+
+/* Montserrat: geometric like Avenir Next, with a genuinely heavy 800/900.
+   Used for both headings (--display) and body text (--body). */
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/montserrat-latin-var.woff2") format("woff2");
+}
+
+/* Geist Mono: the closest free match to SF Mono, slashed zero included
+   (Cascadia Code/Consolas on Windows use a dotted or different zero). */
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/geist-mono-latin-var.woff2") format("woff2");
+}
+
 :root {
   /* --ink and --ink-2 were two near-identical near-blacks in the old dark
      theme, so sheets (--ink) and the base page (--ink-2) looked the same
@@ -49,9 +74,19 @@
      geometric grotesks instead -- confident, a bit poster-like, no softness.
      Body/mono stay untouched: they were never "Rounded" variants and are
      already neutral. */
-  --display: "Avenir Next", "Futura", "Helvetica Neue", Arial, sans-serif;
-  --body: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  /* Avenir Next only exists on Apple devices (licensed, can't be shipped),
+     so everywhere else -- Android especially -- fell through to the phone's
+     own sans-serif, which on many Samsung/Xiaomi/Oppo phones has no real
+     heavy weight and rendered the headings thin. Montserrat (bundled above,
+     OFL) is a free geometric match for Avenir Next, so Apple keeps Avenir and
+     everyone else gets a real 800 instead of a faked bold. */
+  --display: "Avenir Next", "Montserrat", "Futura", "Helvetica Neue", Arial, sans-serif;
+  /* Apple keeps SF Pro (-apple-system); everyone else gets Montserrat too,
+     instead of whatever Segoe UI / Roboto / Samsung One the device has.
+     Segoe UI and system-ui are deliberately NOT listed -- they'd match on
+     Windows/Android before Montserrat ever got a chance. */
+  --body: -apple-system, "SF Pro Text", "Montserrat", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Geist Mono", "Cascadia Code", Menlo, Consolas, monospace;
 
   color-scheme: light;
 }

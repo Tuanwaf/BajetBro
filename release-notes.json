@@ -1,4 +1,8 @@
 {
+  "3.4.1": [
+    "Sharper, bolder text on Android and Windows — headings and labels now use the same chunky style everywhere, not just on iPhone.",
+    "Numbers now show a slashed zero (0) on every phone, so 0 and 8 are easier to tell apart."
+  ],
   "3.4.0": [
     "Pick your streak buddy! On the Streak page, tap any buddy you've unlocked to show it on Home — its card and flame colours come with it.",
     "Unlocking a new buddy switches you to it automatically."
