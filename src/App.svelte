@@ -168,6 +168,7 @@
   {/if}
 
   <div class="status-bar-blur"></div>
+  <div class="sb-edge" aria-hidden="true"></div>
   <!-- Outside the month check so it also shows during onboarding. -->
   <UpdateBanner />
   <Toast />

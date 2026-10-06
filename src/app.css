@@ -182,15 +182,28 @@ body {
     -webkit-backdrop-filter: blur(3px) saturate(120%);
   }
 }
-/* Dev-mode experiment (src/lib/statusBar.js): a coloured fixed strip at the
-   top makes iOS 26/27 fill the status bar with that colour instead of its
-   own glass. pointer-events back on in case WebKit's top-edge hit test
-   skips pointer-events:none boxes. */
-:root[data-sb] .status-bar-blur { pointer-events: auto; }
-:root[data-sb="solid"] .status-bar-blur { background: var(--ink-2); }
-:root[data-sb="cream70"] .status-bar-blur { background: rgba(239, 233, 216, 0.7); }
-:root[data-sb="cream40"] .status-bar-blur { background: rgba(239, 233, 216, 0.4); }
-:root[data-sb="cream15"] .status-bar-blur { background: rgba(239, 233, 216, 0.15); }
+/* Dev-mode experiment (src/lib/statusBar.js). iOS 26/27 drops its tall
+   top-edge glass when a full-width fixed box with a background colour sits
+   at the very top, and fills the status bar with that colour instead. It
+   has to be a PLAIN box -- .status-bar-blur (mask, backdrop-filter,
+   transform) was tested on-device and iOS ignored it -- and it has to be
+   the topmost thing at the top edge, hence its own element above the blur. */
+.sb-edge { display: none; }
+@media (display-mode: standalone) {
+  :root[data-sb] .sb-edge {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 11px;
+    z-index: 101;
+    pointer-events: none;
+    background: var(--ink-2);
+  }
+  :root[data-sb="edge50"] .sb-edge { background: rgba(239, 233, 216, 0.5); }
+  :root[data-sb="edge15"] .sb-edge { background: rgba(239, 233, 216, 0.15); }
+}
 
 .page { display: none; }
 .page.active { display: block; }

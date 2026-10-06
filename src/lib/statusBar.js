@@ -7,16 +7,16 @@ import { writable } from 'svelte/store';
 // stronger and whiter (WebKit bug 325807). Page CSS can't switch it off.
 // The one known escape: when a full-width position:fixed box touches the
 // top edge, WebKit skips its blur and fills the status-bar band with that
-// box's colour. These variants test whether a SEMI-transparent colour keeps
-// some of the old translucent look. Picked in DevStreakPanel; applied as
-// <html data-sb="..."> and styled in app.css (.status-bar-blur).
+// box's colour. v3.4.2 coloured .status-bar-blur itself and iOS ignored it
+// (tall blur stayed), so v3.4.3 adds a plain 11px strip, .sb-edge, and
+// tests it solid and semi-transparent. Picked in DevStreakPanel; applied as
+// <html data-sb="..."> and styled in app.css.
 
 export const STATUS_BAR_STYLES = [
   { id: 'current', label: 'Current (iOS glass)' },
-  { id: 'solid', label: 'Solid cream' },
-  { id: 'cream70', label: 'Cream 70% + blur' },
-  { id: 'cream40', label: 'Cream 40% + blur' },
-  { id: 'cream15', label: 'Cream 15% + blur' },
+  { id: 'edge', label: 'Edge strip solid' },
+  { id: 'edge50', label: 'Edge strip 50%' },
+  { id: 'edge15', label: 'Edge strip 15%' },
 ];
 
 const KEY = 'bb-statusbar-style';
