@@ -10,7 +10,6 @@
   import StreakCelebration from './lib/components/StreakCelebration.svelte';
   import UpdateBanner from './lib/components/UpdateBanner.svelte';
   import { devDays } from './lib/streak.js';
-  import './lib/statusBar.js';
   import Home from './routes/Home.svelte';
   import Goals from './routes/Goals.svelte';
   import History from './routes/History.svelte';

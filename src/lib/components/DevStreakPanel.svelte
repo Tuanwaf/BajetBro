@@ -9,15 +9,12 @@
   import { currentView } from '../viewStore.js';
   import { showToast } from '../toast.js';
   import { previewUpdateBanner } from '../updates.js';
-  import { statusBarStyle, STATUS_BAR_STYLES, topMetrics } from '../statusBar.js';
   import {
     devDays, devSeenReset, streak, celebration, streakSheetOpen, lastSetupMs,
     daysFromPattern, recordStreakActivity, previewCelebration, localDay, TIERS,
   } from '../streak.js';
 
   let previewing = $derived($devDays != null);
-  let metrics = $state('');
-  $effect(() => { $statusBarStyle; requestAnimationFrame(() => (metrics = topMetrics())); });
 
   // ---- celebrations ----
   // A day count inside each tier, a few days past its start (so a relight
@@ -190,15 +187,6 @@
 
   <div class="field-lbl">App updates</div>
   <button class="io-btn" onclick={previewUpdateBanner}>Preview the update banner</button>
-
-  <div class="field-lbl">Status bar (iOS 26/27 test)</div>
-  <p class="hint" style="margin:0 0 8px;">Only this phone. Check it in the installed app, scrolling content under the notch.</p>
-  <div class="grid">
-    {#each STATUS_BAR_STYLES as s}
-      <button class="chip" class:ghost={$statusBarStyle !== s.id} class:selected={$statusBarStyle === s.id} onclick={() => statusBarStyle.set(s.id)}>{s.label}</button>
-    {/each}
-  </div>
-  <p class="hint" style="margin:8px 0 0;">{metrics}</p>
 
   <div class="sim" style="margin-top:14px;">
     <button class="io-btn" disabled={!previewing} onclick={exitPreview}>Exit preview</button>

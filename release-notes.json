@@ -1,4 +1,7 @@
 {
+  "3.4.7": [
+    "Tidy-up: removed the test settings from the last few updates. Nothing changes for you."
+  ],
   "3.4.6": [
     "More behind-the-scenes prep for a cleaner top edge on iPhones running iOS 26 and 27."
   ],
