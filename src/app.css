@@ -182,27 +182,27 @@ body {
     -webkit-backdrop-filter: blur(3px) saturate(120%);
   }
 }
-/* Dev-mode experiment (src/lib/statusBar.js). iOS 26/27 fills the status
-   bar with the colour of a full-width fixed box at the very top -- but it
-   finds that box by HIT-TESTING, so pointer-events must be on. On-device:
-   .status-bar-blur with pointer-events on turned the status bar solid
-   (v3.4.2); the plain strip with pointer-events:none did nothing (v3.4.3).
-   The tall blur below stayed both times. The noblur variants hide our own
-   frost to tell whether part of that tall blur is ours. */
-.sb-edge { display: none; }
+/* Dev-mode experiment (src/lib/statusBar.js). iOS 26/27 adds its own tall
+   glass below the status bar that page CSS can't remove (v3.4.2-3.4.4 tests:
+   coloured top strips only recolour the status band). These variants copy
+   muffinman.io/ios-statusbar-blur instead: a stronger blur tinted with the
+   page colour and no fade, ending at the status bar, so iOS's glass sits on
+   an already-soft layer and the two read as one smooth gradient.
+   pointer-events stay off so iOS doesn't paint a flat colour over it. */
 @media (display-mode: standalone) {
-  :root[data-sb^="edge"] .sb-edge {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 11px;
-    z-index: 101;
-    background: var(--ink-2);
+  :root[data-sb^="muffin"] .status-bar-blur {
+    height: env(safe-area-inset-top, 0px);
+    -webkit-mask-image: none;
+    mask-image: none;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: rgba(239, 233, 216, 0.6);
   }
-  :root[data-sb="edge15"] .sb-edge { background: rgba(239, 233, 216, 0.15); }
-  :root[data-sb$="noblur"] .status-bar-blur { display: none; }
+  :root[data-sb="muffin40"] .status-bar-blur { background: rgba(239, 233, 216, 0.4); }
+  :root[data-sb="muffin12"] .status-bar-blur {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
 }
 
 .page { display: none; }
