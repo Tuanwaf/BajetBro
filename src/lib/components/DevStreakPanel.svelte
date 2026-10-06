@@ -9,13 +9,15 @@
   import { currentView } from '../viewStore.js';
   import { showToast } from '../toast.js';
   import { previewUpdateBanner } from '../updates.js';
-  import { statusBarStyle, STATUS_BAR_STYLES } from '../statusBar.js';
+  import { statusBarStyle, STATUS_BAR_STYLES, topMetrics } from '../statusBar.js';
   import {
     devDays, devSeenReset, streak, celebration, streakSheetOpen, lastSetupMs,
     daysFromPattern, recordStreakActivity, previewCelebration, localDay, TIERS,
   } from '../streak.js';
 
   let previewing = $derived($devDays != null);
+  let metrics = $state('');
+  $effect(() => { $statusBarStyle; requestAnimationFrame(() => (metrics = topMetrics())); });
 
   // ---- celebrations ----
   // A day count inside each tier, a few days past its start (so a relight
@@ -196,6 +198,7 @@
       <button class="chip" class:ghost={$statusBarStyle !== s.id} class:selected={$statusBarStyle === s.id} onclick={() => statusBarStyle.set(s.id)}>{s.label}</button>
     {/each}
   </div>
+  <p class="hint" style="margin:8px 0 0;">{metrics}</p>
 
   <div class="sim" style="margin-top:14px;">
     <button class="io-btn" disabled={!previewing} onclick={exitPreview}>Exit preview</button>
