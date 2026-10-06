@@ -6,15 +6,16 @@ import { writable } from 'svelte/store';
 // installed web apps that use black-translucent, and iOS 27 made it much
 // stronger and whiter (WebKit bug 325807). Page CSS can't switch it off.
 // Coloured top strips (v3.4.2-3.4.4) only recoloured the status band; the
-// tall glass stayed. v3.4.5 tries muffinman.io's softer tinted blur instead.
+// tall glass stayed. v3.4.5 tried muffinman.io's tinted blur, which left a
+// hard seam against iOS's glass; v3.4.6 fades it into that glass instead.
 // Picked in DevStreakPanel; applied as
 // <html data-sb="..."> and styled in app.css.
 
 export const STATUS_BAR_STYLES = [
   { id: 'current', label: 'Current (iOS glass)' },
-  { id: 'muffin', label: 'Muffinman 8px · 60%' },
-  { id: 'muffin40', label: 'Muffinman 8px · 40%' },
-  { id: 'muffin12', label: 'Muffinman 12px · 60%' },
+  { id: 'blend', label: 'Blend 8px · 45% · 32px fade' },
+  { id: 'blend-light', label: 'Blend 8px · 20% · 32px fade' },
+  { id: 'blend-long', label: 'Blend 8px · 45% · 56px fade' },
 ];
 
 const KEY = 'bb-statusbar-style';

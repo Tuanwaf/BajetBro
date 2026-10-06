@@ -183,26 +183,28 @@ body {
   }
 }
 /* Dev-mode experiment (src/lib/statusBar.js). iOS 26/27 adds its own tall
-   glass below the status bar that page CSS can't remove (v3.4.2-3.4.4 tests:
-   coloured top strips only recolour the status band). These variants copy
-   muffinman.io/ios-statusbar-blur instead: a stronger blur tinted with the
-   page colour and no fade, ending at the status bar, so iOS's glass sits on
-   an already-soft layer and the two read as one smooth gradient.
-   pointer-events stay off so iOS doesn't paint a flat colour over it. */
+   glass below the status bar that page CSS can't remove. v3.4.5 copied
+   muffinman.io's tinted 8px blur ending at the status bar: on-device it
+   read as a solid band with a hard seam where it met iOS's glass. These
+   "blend" variants keep the stronger tinted blur but run it past the status
+   bar and fade both the tint and the blur out over --sb-fade, so it melts
+   into iOS's glass instead of ending on a line. pointer-events stay off so
+   iOS doesn't paint a flat colour over it. */
 @media (display-mode: standalone) {
-  :root[data-sb^="muffin"] .status-bar-blur {
-    height: env(safe-area-inset-top, 0px);
-    -webkit-mask-image: none;
-    mask-image: none;
+  :root[data-sb^="blend"] .status-bar-blur {
+    --sb-fade: 32px;
+    --sb-tint: 0.45;
+    height: calc(env(safe-area-inset-top, 0px) + var(--sb-fade));
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--sb-fade)), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--sb-fade)), transparent 100%);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    background: rgba(239, 233, 216, 0.6);
+    background: linear-gradient(to bottom,
+      rgba(239, 233, 216, var(--sb-tint)) calc(100% - var(--sb-fade)),
+      rgba(239, 233, 216, 0) 100%);
   }
-  :root[data-sb="muffin40"] .status-bar-blur { background: rgba(239, 233, 216, 0.4); }
-  :root[data-sb="muffin12"] .status-bar-blur {
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
+  :root[data-sb="blend-light"] .status-bar-blur { --sb-tint: 0.2; }
+  :root[data-sb="blend-long"] .status-bar-blur { --sb-fade: 56px; }
 }
 
 .page { display: none; }
