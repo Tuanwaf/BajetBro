@@ -1,4 +1,7 @@
 {
+  "3.4.2": [
+    "Behind-the-scenes prep for a cleaner top edge on iPhones running iOS 26 and 27."
+  ],
   "3.4.1": [
     "Sharper, bolder text on Android and Windows — headings and labels now use the same chunky style everywhere, not just on iPhone.",
     "Numbers now show a slashed zero (0) on every phone, so 0 and 8 are easier to tell apart."

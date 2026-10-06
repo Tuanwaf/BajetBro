@@ -9,6 +9,7 @@
   import { currentView } from '../viewStore.js';
   import { showToast } from '../toast.js';
   import { previewUpdateBanner } from '../updates.js';
+  import { statusBarStyle, STATUS_BAR_STYLES } from '../statusBar.js';
   import {
     devDays, devSeenReset, streak, celebration, streakSheetOpen, lastSetupMs,
     daysFromPattern, recordStreakActivity, previewCelebration, localDay, TIERS,
@@ -187,6 +188,14 @@
 
   <div class="field-lbl">App updates</div>
   <button class="io-btn" onclick={previewUpdateBanner}>Preview the update banner</button>
+
+  <div class="field-lbl">Status bar (iOS 26/27 test)</div>
+  <p class="hint" style="margin:0 0 8px;">Only this phone. Check it in the installed app, scrolling content under the notch.</p>
+  <div class="grid">
+    {#each STATUS_BAR_STYLES as s}
+      <button class="chip" class:ghost={$statusBarStyle !== s.id} class:selected={$statusBarStyle === s.id} onclick={() => statusBarStyle.set(s.id)}>{s.label}</button>
+    {/each}
+  </div>
 
   <div class="sim" style="margin-top:14px;">
     <button class="io-btn" disabled={!previewing} onclick={exitPreview}>Exit preview</button>

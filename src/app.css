@@ -182,6 +182,15 @@ body {
     -webkit-backdrop-filter: blur(3px) saturate(120%);
   }
 }
+/* Dev-mode experiment (src/lib/statusBar.js): a coloured fixed strip at the
+   top makes iOS 26/27 fill the status bar with that colour instead of its
+   own glass. pointer-events back on in case WebKit's top-edge hit test
+   skips pointer-events:none boxes. */
+:root[data-sb] .status-bar-blur { pointer-events: auto; }
+:root[data-sb="solid"] .status-bar-blur { background: var(--ink-2); }
+:root[data-sb="cream70"] .status-bar-blur { background: rgba(239, 233, 216, 0.7); }
+:root[data-sb="cream40"] .status-bar-blur { background: rgba(239, 233, 216, 0.4); }
+:root[data-sb="cream15"] .status-bar-blur { background: rgba(239, 233, 216, 0.15); }
 
 .page { display: none; }
 .page.active { display: block; }
