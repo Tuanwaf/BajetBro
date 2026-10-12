@@ -78,36 +78,60 @@ which breaks BajetBro's local-only privacy.
 
 ---
 
-## Automation: auto-record transactions (NOT POSSIBLE YET)
+## Automation: auto-record transactions (POSSIBLE WITH SETUP, not decided)
 
 **Idea:** transactions from card, QR (DuitNow) or e-wallet payments appear in
 BajetBro automatically.
 
-**Status: cannot be built yet.** Parked until something below changes.
+**Status (updated 2026-10-12): now feasible, but not from the PWA alone.** Parked until
+we pick a route below. Originally marked "not possible yet" (2026-10-05).
 
-### Why not
+### What changed
 
-- BajetBro is a web app (PWA). iOS and Android do not let web apps read bank apps,
-  card transactions, SMS or notifications.
-- Malaysia has no open-banking API that individuals or small apps can connect to.
-- Reading bank notifications is only possible in a native Android app (notification
-  listener), which means leaving the PWA model, and it still would not work on iPhone.
+- **iOS 27** added a Shortcuts automation trigger "When I receive a notification from
+  [app]", filterable by title/body text, running in the background. Before iOS 27,
+  iPhone could not react to other apps' notifications at all.
+- **Dooit** (trydooit.app, Malaysian, local-first) uses this: its native app ships a
+  Shortcuts action "Capture Bank Notification"; the user sets up one automation per
+  bank app (MAE, HLB Connect, TNG eWallet, Ryt Bank) and Dooit turns the alert into a
+  transaction to review. On Android, Dooit uses notification access (native listener).
 
-### Partial workarounds considered (not planned)
+### Why the PWA still can't do it alone
+
+- A PWA cannot add its own Shortcuts action (only native apps can, via App Intents).
+- Shortcuts "Open URL" opens Safari, whose storage is separate from the installed
+  home-screen PWA's IndexedDB, so a prefilled-URL hand-off never reaches the user's data.
+- On Android, reading other apps' notifications also needs native code
+  (NotificationListenerService). A PWA cannot do it there either.
+- Malaysia still has no open-banking API that individuals or small apps can connect to.
+
+### Routes (pick one)
+
+| Route | iPhone | Android | Trade-off |
+|---|---|---|---|
+| **A. Cloudflare Worker inbox** (preferred) | iOS 27 notification automation → "Get Contents of URL" POSTs the alert text to a Worker | MacroDroid / Tasker / Automate posts the same | One backend serves both. Fully background. Notification text passes through our server, so not 100% local any more. User does a one-time automation setup. BajetBro pulls the inbox on open and shows drafts to confirm. |
+| **B. Clipboard hand-off** | Automation copies parsed amount/merchant | Same via automation app | No server, but clunky: open app, allow paste, clipboard gets overwritten. |
+| **C. Native wrapper** (Capacitor / TWA) | Real Shortcuts action like Dooit | Real notification listener | Apple Developer $99/yr + App Store review; Google Play $25 one-time. Leaves the pure-PWA model. |
+
+Any route needs one notification-text parser per bank/e-wallet (collect real sample
+notifications first) and requires iOS 27+ on iPhone.
+
+### Other partial workarounds considered (not planned)
 
 - **iPhone Shortcuts "Transaction" automation**: runs when an Apple Pay card is tapped
-  and passes the amount and merchant. It could open BajetBro with a prefilled entry to
-  confirm. It only covers Apple Pay, not DuitNow QR in bank apps or e-wallets.
+  and passes the amount and merchant. Only covers Apple Pay, not DuitNow QR in bank
+  apps or e-wallets, and has the same Safari-storage hand-off problem (would use route A).
 - **Bank statement import** (CSV/PDF, monthly) with duplicate removal and
   merchant→category rules. Semi-automatic; needs one parser per bank.
 - **Android Web Share Target**: share a payment screenshot or text into BajetBro.
   Not supported for PWAs on iOS.
 
-### What would unblock it
+### Open decisions
 
-- Malaysian open banking / open finance APIs becoming available to apps.
-- Deciding to ship a native app (e.g. Capacitor wrapper) for Android notification reading.
-- Deciding that a partial solution (Apple Pay Shortcut or statement import) is worth it.
+- Route A, B or C?
+- Is sending notification text to our own Worker acceptable for a "local-only" app
+  (opt-in, delete-after-pull, no storage beyond the inbox)?
+- Before or after the tax-relief feature?
 
 If it is ever built, a prefilled entry must still be confirmed with a Save tap, which
 also keeps the streak rule ("a day counts when an entry is saved") meaningful.
