@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte';
   import db from '../db.js';
   import { showToast } from '../toast.js';
-  import { streak, streakReady, devDays, devSeenReset, celebration, celebrating, cardBuddyEl, landed, TIERS, GREY_PASTEL, tierIndex, shownTierIndex, buddyChoice, REVIVE_DAYS } from '../streak.js';
+  import { streak, streakReady, celebration, celebrating, cardBuddyEl, landed, TIERS, GREY_PASTEL, tierIndex, shownTierIndex, buddyChoice, REVIVE_DAYS } from '../streak.js';
   import StreakFlame from './StreakFlame.svelte';
 
   let { onOpen } = $props();
@@ -75,29 +75,14 @@
 
   // A freeze is spent silently on the day after a missed one -- the first
   // time the card sees a newly spent one (normally: opening the app the next
-  // morning), it plays the freeze animation. The real count seen so far is
-  // kept in db.meta; dev previews keep their own in memory, reset whenever
-  // the panel jumps to a new state, so "Next day" in dev mode can trigger it.
-  let devSeen = null;
-  let lastReset = 0;
+  // morning), it plays the freeze animation. The count seen so far is kept
+  // in db.meta (admin mode's "Next day" leaves it alone so it fires there too).
   function announceFreeze(n, s) {
     later(() => celebration.set({ kind: 'freeze', before: s, after: s, freezesUsed: n, freezeEarned: false }), 700);
   }
   $effect(() => {
     if (!$streakReady) return;
     const s = $streak;
-    const reset = $devSeenReset;
-    if ($devDays) {
-      if (devSeen == null || reset !== lastReset) {
-        devSeen = s.freezesUsed;
-        lastReset = reset;
-      } else if (s.freezesUsed > devSeen) {
-        announceFreeze(s.freezesUsed - devSeen, s);
-        devSeen = s.freezesUsed;
-      }
-      return;
-    }
-    devSeen = null;
     db.meta.get('streakFreezesSeen').then((rec) => {
       const seen = rec?.value ?? 0;
       if (!rec || s.freezesUsed < seen) {

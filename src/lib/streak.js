@@ -191,14 +191,7 @@ export const today = readable(localDay(), (set) => {
   };
 });
 
-// Dev mode's preview days. While set, everything streak-related (Home card,
-// Streak page, simulated saves) runs on this list instead of the real one,
-// so previewing never touches the user's actual streak.
-export const devDays = writable(null);
-// Bumped by the dev panel whenever it jumps to a new state, so the Home
-// card re-baselines which preview freezes it has already announced.
-export const devSeenReset = writable(0);
-const effectiveDays = derived([streakDays, devDays], ([$real, $dev]) => $dev ?? $real ?? []);
+const effectiveDays = derived(streakDays, ($d) => $d ?? []);
 // False for the first moment after launch, before the real days have loaded.
 // Anything that compares against stored bookkeeping (the freeze-used check)
 // must wait for this, or it would mistake "not loaded yet" for "no streak".
@@ -218,9 +211,9 @@ export const celebrating = writable(false);
 // Fired by StreakCelebration once its buddy has flown back into the card --
 // the card rolls its number up and does its landing jelly then.
 export const landed = writable(null);
-// Open state of Home's Streak page -- a store so dev mode can open it too.
+// Open state of Home's Streak page -- a store so admin mode can close it.
 export const streakSheetOpen = writable(false);
-// How long the last celebration took to get ready (ms) -- shown in dev mode.
+// How long the last celebration took to get ready (ms) -- shown in admin mode.
 export const lastSetupMs = writable(null);
 
 export function classify(before, after) {
@@ -243,15 +236,13 @@ export function classify(before, after) {
 export async function recordStreakActivity() {
   try {
     const t = localDay();
-    const preview = get(devDays);
-    const days = preview ?? (await db.meta.get('streakDays'))?.value ?? [];
+    const days = (await db.meta.get('streakDays'))?.value ?? [];
     if (days.includes(t)) return;
     const before = computeStreak(days, t);
     const nextDays = [...days, t];
-    if (preview) devDays.set(nextDays);
-    else await db.meta.put({ key: 'streakDays', value: nextDays });
+    await db.meta.put({ key: 'streakDays', value: nextDays });
     const c = classify(before, computeStreak(nextDays, t));
-    if (c?.kind === 'tierup' && !preview) await setBuddyChoice(null);
+    if (c?.kind === 'tierup') await setBuddyChoice(null);
     if (c) setTimeout(() => celebration.set(c), 550);
   } catch (e) {
     console.error('[BajetBro] streak record failed:', e);
@@ -259,34 +250,82 @@ export async function recordStreakActivity() {
 }
 
 // ---------------------------------------------------------------------------
-// Dev mode helpers (see DevStreakPanel)
+// Admin mode helpers (see AdminStreakPanel). These edit the REAL streak --
+// the first edit stashes the untouched days in meta 'streakDaysAdminBackup'
+// so they can be put back.
 // ---------------------------------------------------------------------------
-
-// Plays a celebration without changing any data. `count` is the streak
-// reached; `from` what it was before.
-export function previewCelebration(kind, count, from = count - 1) {
-  const mk = (status, c) => ({ status, count: c, freezes: 1, revive: 0, best: c, todayLogged: true, freezesUsed: 0, frozenDays: [] });
-  if (kind === 'freeze') {
-    const s = mk('active', count);
-    s.freezes = 0;
-    celebration.set({ kind, before: s, after: s, freezesUsed: 1, freezeEarned: false });
-    return;
-  }
-  const before = kind === 'revive' ? mk('grey', from) : kind === 'start' ? mk('none', 0) : mk('active', from);
-  celebration.set({ kind, before, after: mk('active', count), freezeEarned: false });
-}
 
 // Builds a day list ending at today: `pattern` is read oldest -> newest,
 // '1' = logged, '0' = missed; the last char is today.
-export function daysFromPattern(pattern) {
+export function daysFromPattern(pattern, now = new Date()) {
   const out = [];
   const n = pattern.length;
   for (let i = 0; i < n; i++) {
     if (pattern[i] !== '1') continue;
-    const d = new Date();
+    const d = new Date(now);
     d.setHours(12, 0, 0, 0);
     d.setDate(d.getDate() - (n - 1 - i));
     out.push(localDay(d));
   }
   return out;
+}
+
+// A history that replays (computeStreak) to exactly the requested state:
+// { status: 'none'|'active'|'grey', count, freezes, revive, todayLogged, best }.
+// Tries a handful of layouts and keeps the first that matches, so the rules
+// above stay the only source of truth. Returns null if no layout fits
+// (e.g. 2 freezes on a 5-day streak).
+export function buildStreakDays({ status, count, freezes = 0, revive = 0, todayLogged, best = 0 }) {
+  const one = (n) => '1'.repeat(Math.max(0, n));
+  const zero = (n) => '0'.repeat(Math.max(0, n));
+  // An older streak that was lost: grey, relight started, then a miss.
+  const prefix = best > count ? one(best) + '000' + '1' + '00' : '';
+  const tail = todayLogged ? '' : '0';
+  const candidates = [];
+  if (status === 'none') {
+    if (!todayLogged) candidates.push(prefix + tail);
+  } else if (status === 'active') {
+    for (let k = 0; k <= MAX_FREEZES; k++)
+      for (let b = 0; b <= Math.min(count - 1, 3 * FREEZE_EVERY); b++)
+        candidates.push(prefix + one(count - b) + zero(k) + one(b) + tail);
+    // When the run would always earn one more freeze just before today
+    // (e.g. 0 freezes on day 399 logged today), burn it with a second gap.
+    for (let k = 0; k <= MAX_FREEZES; k++)
+      for (let j = 1; j <= MAX_FREEZES; j++)
+        for (let b = 0; b <= Math.min(count - 2, 2 * FREEZE_EVERY); b++)
+          candidates.push(prefix + one(count - b - 1) + zero(k) + one(b) + zero(j) + '1' + tail);
+    // Some states only exist after a relight (it restarts the freeze
+    // count): e.g. 0 freezes on day 35 when today is logged.
+    for (let k = 1; k <= MAX_FREEZES + 1; k++)
+      for (let b = 0; b <= Math.min(count - REVIVE_DAYS - 1, 2 * FREEZE_EVERY); b++)
+        candidates.push(prefix + one(count - REVIVE_DAYS - b) + zero(k) + one(REVIVE_DAYS + b) + tail);
+  } else if (status === 'grey') {
+    if (!(todayLogged && revive === 0))
+      for (let k = 1; k <= MAX_FREEZES + 1; k++) candidates.push(prefix + one(count) + zero(k) + one(revive) + tail);
+  }
+  const now = new Date();
+  const t = localDay(now);
+  for (const p of candidates) {
+    const days = daysFromPattern(p, now);
+    const r = computeStreak(days, t);
+    if (r.status !== status || r.count !== count || r.todayLogged !== todayLogged) continue;
+    if (status === 'active' && r.freezes !== freezes) continue;
+    if (status === 'grey' && r.revive !== revive) continue;
+    if (best > count && r.best !== best) continue;
+    return days;
+  }
+  return null;
+}
+
+// Replaces the real streak days. By default keeps the freeze bookkeeping in
+// step so jumping to a new state doesn't fire a stray freeze animation;
+// "Next day" passes announceFreezes so a freeze spent overnight plays just
+// as it would on a real morning.
+export async function adminSetDays(days, { announceFreezes = false } = {}) {
+  if (!(await db.meta.get('streakDaysAdminBackup'))) {
+    const real = (await db.meta.get('streakDays'))?.value ?? [];
+    await db.meta.put({ key: 'streakDaysAdminBackup', value: { days: real, at: new Date().toISOString() } });
+  }
+  if (!announceFreezes) await db.meta.put({ key: 'streakFreezesSeen', value: computeStreak(days).freezesUsed });
+  await db.meta.put({ key: 'streakDays', value: days });
 }

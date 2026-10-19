@@ -6,7 +6,7 @@
   import { BUFFER_LABEL_PRESETS, GOAL_COLORS } from '../lib/constants.js';
   import db from '../lib/db.js';
   import { exportBackup, importBackup } from '../lib/backup.js';
-  import DevStreakPanel from '../lib/components/DevStreakPanel.svelte';
+  import AdminStreakPanel from '../lib/components/AdminStreakPanel.svelte';
   // Guided tour is disabled for now -- see the commented-out "Help" section
   // below. Uncomment this import alongside it to bring the button back.
   // import { startTour } from '../lib/tour.js';
@@ -251,18 +251,41 @@
     showToast('Exported — save this file somewhere safe');
   }
 
-  // Hidden switch: 7 quick taps on the version number toggles dev mode.
+  // Hidden switch: 7 quick taps on the version number asks for the admin
+  // password (or locks admin mode again if it's on). Only a casual lock --
+  // the app is local-only, so there's nothing server-side to protect.
+  const ADMIN_PASSWORD = '028282';
   let versionTaps = 0;
   let versionTapTimer;
+  let askPassword = $state(false);
+  let passwordInput = $state('');
   async function tapVersion() {
     versionTaps++;
     clearTimeout(versionTapTimer);
     versionTapTimer = setTimeout(() => (versionTaps = 0), 1500);
     if (versionTaps < 7) return;
     versionTaps = 0;
-    const on = !$devModeEnabled;
-    await db.meta.put({ key: 'devMode', value: on });
-    showToast(on ? 'Dev mode on — see the bottom of Settings' : 'Dev mode off');
+    if ($devModeEnabled) {
+      await db.meta.put({ key: 'devMode', value: false });
+      showToast('Admin mode locked');
+    } else {
+      passwordInput = '';
+      askPassword = true;
+    }
+  }
+  async function submitPassword() {
+    if (passwordInput !== ADMIN_PASSWORD) {
+      passwordInput = '';
+      showToast('Wrong password');
+      return;
+    }
+    // Blur first: removing a still-focused input fires App's focusout
+    // handler in the middle of the DOM update.
+    document.activeElement?.blur();
+    askPassword = false;
+    passwordInput = '';
+    await db.meta.put({ key: 'devMode', value: true });
+    showToast('Admin mode on — see below');
   }
 </script>
 
@@ -448,8 +471,19 @@ Guided tour disabled for now -- revisit later if still wanted.
   </div>
 {/if}
 
-{#if import.meta.env.DEV || $devModeEnabled}
-  <DevStreakPanel />
+{#if askPassword && !$devModeEnabled}
+  <div class="section-hd"><h3>Admin mode</h3></div>
+  <div class="card">
+    <input class="note-input" type="password" inputmode="numeric" autocomplete="off" placeholder="Password" bind:value={passwordInput} onkeydown={(e) => e.key === 'Enter' && submitPassword()} style="width:100%; box-sizing:border-box;" />
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button class="io-btn" style="flex:1;" onclick={() => { document.activeElement?.blur(); askPassword = false; }}>Cancel</button>
+      <button class="save-btn" style="flex:1; margin-top:0;" onclick={submitPassword}>Unlock</button>
+    </div>
+  </div>
+{/if}
+
+{#if $devModeEnabled}
+  <AdminStreakPanel />
 {/if}
 
 <!-- Bumped by hand on every push -- check this against what you were told

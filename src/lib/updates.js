@@ -81,7 +81,7 @@ export async function installUpdate() {
   setTimeout(() => window.location.reload(), 4000);
 }
 
-// Dev mode: shows the banner with made-up content, no service worker needed.
+// Admin mode: shows the banner with made-up content, no service worker needed.
 export function previewUpdateBanner() {
   updateAvailable.set({
     version: '9.9.9',
