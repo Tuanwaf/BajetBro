@@ -26,7 +26,10 @@
   let shownTier = $derived(TIERS[shownTierIndex($streak.count, $streak.best, $buddyChoice)]);
 
   // ---- set the streak ----
-  // Starts from whatever the real streak is now.
+  // Starts from whatever the real streak is now. For an active streak the
+  // number is TODAY's day number: "200, not logged" means Home shows 199
+  // and logging today makes it 200 (and plays the evolve). A streak on hold
+  // keeps its frozen number either way.
   let fStatus = $state('active');
   let fCount = $state(0);
   let fToday = $state(false);
@@ -36,8 +39,8 @@
   // The live store lags a write by a tick, so callers that just wrote pass
   // the new state in.
   function loadCurrent(s = $streak) {
-    fStatus = s.status;
-    fCount = s.count;
+    fStatus = s.status === 'none' ? 'active' : s.status;
+    fCount = s.status === 'grey' || s.todayLogged ? s.count : s.count + 1;
     fToday = s.todayLogged;
     fFreezes = s.freezes;
     fRevive = s.revive;
@@ -49,9 +52,12 @@
   });
 
   const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
-  let maxFreezes = $derived(Math.min(MAX_FREEZES, Math.floor(clampInt(fCount, 0, 3000) / FREEZE_EVERY)));
-  let fTier = $derived(TIERS[tierIndex(Math.max(1, clampInt(fCount, 0, 3000)))]);
-  let fNext = $derived(TIERS[tierIndex(Math.max(1, clampInt(fCount, 0, 3000))) + 1] ?? null);
+  let fDay = $derived(clampInt(fCount, 0, 3000));
+  // What the streak count actually is right now (before today's log).
+  let effCount = $derived(fStatus === 'grey' || fToday ? fDay : Math.max(0, fDay - 1));
+  let maxFreezes = $derived(Math.min(MAX_FREEZES, Math.floor(effCount / FREEZE_EVERY)));
+  let fTier = $derived(TIERS[tierIndex(Math.max(1, fDay))]);
+  let fNext = $derived(TIERS[tierIndex(Math.max(1, fDay)) + 1] ?? null);
 
   async function apply(target, label) {
     const days = buildStreakDays(target);
@@ -65,8 +71,8 @@
     return true;
   }
   async function applyForm() {
-    const count = clampInt(fCount, 0, 3000);
-    const status = count === 0 ? 'none' : fStatus === 'none' ? 'active' : fStatus;
+    const count = effCount;
+    const status = count === 0 ? 'none' : fStatus;
     const todayLogged = status === 'none' ? false : fToday;
     const target = {
       status,
@@ -156,10 +162,10 @@
 
   <div class="field-lbl">Set the streak</div>
   <div class="row">
-    <span class="lbl">Streak days</span>
+    <span class="lbl">{fStatus === 'grey' ? 'Streak days (on hold)' : 'Today is day'}</span>
     <input class="note-input num" type="number" inputmode="numeric" min="0" max="3000" bind:value={fCount} />
   </div>
-  {#if clampInt(fCount, 0, 3000) > 0}
+  {#if fDay > 0}
     <div class="row">
       <span class="lbl">Status</span>
       <div class="seg">
@@ -198,19 +204,26 @@
     <span class="lbl">Best ever <small>(unlocks buddies)</small></span>
     <input class="note-input num" type="number" inputmode="numeric" min="0" max="3000" bind:value={fBest} />
   </div>
-  {#if clampInt(fCount, 0, 3000) > 0}
-    <p class="hint" style="margin:2px 0 8px;">Buddy: <b>{fTier.name}</b>{#if fNext}{' · '}{fNext.name} unlocks at {fNext.min} ({fNext.min - clampInt(fCount, 0, 3000)} more){/if}</p>
+  {#if fDay > 0}
+    <p class="hint" style="margin:2px 0 8px;">
+      {#if fStatus !== 'grey' && !fToday}
+        Home will show <b>{effCount}</b>. Tap <b>Log today</b> after Apply to reach day {fDay}{#if tierIndex(Math.max(1, effCount)) !== tierIndex(fDay) && effCount > 0}{' '}and unlock <b>{fTier.name}</b>{/if}.
+      {:else}
+        Home will show <b>{fDay}</b> · buddy <b>{fTier.name}</b>{#if fNext}{' · '}{fNext.name} at {fNext.min}{/if}.
+      {/if}
+      Apply itself never plays an animation.
+    </p>
   {/if}
   <div class="pair">
     <button class="io-btn" onclick={() => loadCurrent()}>Reset form</button>
     <button class="save-btn" style="margin-top:0;" onclick={applyForm}>Apply</button>
   </div>
 
-  <div class="field-lbl">Day before a buddy unlocks</div>
-  <p class="hint" style="margin:0 0 8px;">Sets the streak one day short, not logged today. Then tap <b>Log today</b> (or save any entry) to watch the unlock.</p>
+  <div class="field-lbl">Unlock a buddy</div>
+  <p class="hint" style="margin:0 0 8px;">Makes today that buddy's first day, not logged yet. Then tap <b>Log today</b> (or save any entry) to watch the unlock.</p>
   <div class="grid">
     {#each TIERS.slice(1) as t}
-      <button class="chip ghost" onclick={() => eveOf(t)}>{t.name} · {t.min - 1}</button>
+      <button class="chip ghost" onclick={() => eveOf(t)}>{t.name} · day {t.min}</button>
     {/each}
   </div>
 
